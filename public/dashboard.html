@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Dashboard</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Portfolio Dashboard</h1>
+    <nav><a href="/public/manager.html">Manager Panel</a> | <a href="/public/index.html">Logout</a></nav>
+  </header>
+  <main class="layout">
+    <section>
+      <h2>Cash & Positions</h2>
+      <div id="cash"></div>
+      <table id="positions">
+        <thead><tr><th>Ticker</th><th>Quantity</th><th>Avg Price</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Available Stocks</h2>
+      <div id="stocks"></div>
+    </section>
+    <section>
+      <h2>Active Shorts</h2>
+      <table id="shorts">
+        <thead><tr><th>Ticker</th><th>Quantity</th><th>Open Price</th><th>Expires</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Crisis Scenarios</h2>
+      <ul id="scenarios"></ul>
+    </section>
+  </main>
+  <script src="/public/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+body { font-family: Arial, sans-serif; margin: 0; background: #f4f6fb; color: #1f2933; }
+.layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; padding: 1rem; }
+.layout.narrow { max-width: 720px; margin: 2rem auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+section { background: #fff; padding: 1rem; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+label { display: block; margin-bottom: 0.5rem; }
+input, select, textarea, button { width: 100%; padding: 0.5rem; margin-top: 0.3rem; box-sizing: border-box; }
+button { background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+button:disabled { background: #ccc; }
+.topbar { background: #111827; color: #fff; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
+nav a { color: #bfdbfe; margin-left: 0.5rem; }
+.card { background: #f8fafc; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.5rem; border: 1px solid #e5e7eb; }
+.actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.5rem; border-bottom: 1px solid #e5e7eb; }
+ul { list-style: none; padding: 0; }
