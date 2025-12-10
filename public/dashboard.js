@@ -40,11 +40,10 @@ async function trade(stockId, type) {
 }
 
 function connectSocket(institutionId) {
-function connectSocket(institutionId) {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = window.WS_HOST || window.location.hostname + ':8765';
   ws = new WebSocket(`${wsProtocol}//${wsHost}/ws?institution_id=${institutionId}`);
-}
+  ws.onmessage = (ev) => {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'price_update') {
