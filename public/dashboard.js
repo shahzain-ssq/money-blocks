@@ -1,32 +1,40 @@
 let ws;
 async function init() {
-  const meRes = await fetch('/api/auth_me.php');
-  const me = await meRes.json();
-  if (!me.user) return window.location = '/public/index.html';
-  const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
-    fetch('/api/portfolio.php'),
-    fetch('/api/stocks.php'),
-    fetch('/api/crisis.php')
-  ]);
-  const portfolio = await portfolioRes.json();
-  const stocks = await stocksRes.json();
-  const crisis = await crisisRes.json();
-  document.getElementById('cash').textContent = `Cash Balance: ${portfolio.portfolio.cash_balance}`;
-  const posBody = document.querySelector('#positions tbody');
-  posBody.innerHTML = portfolio.positions.map(p => `<tr><td>${p.ticker}</td><td>${p.quantity}</td><td>${p.avg_price}</td></tr>`).join('');
-  document.getElementById('stocks').innerHTML = stocks.stocks.map(s => `
-    <div class="card">
-      <strong>${s.ticker}</strong> ${s.name}<br />
-      Price: ${s.current_price || s.initial_price}
-      <div class="actions">
-        <button onclick="trade(${s.id}, 'buy')">Buy</button>
-        <button onclick="trade(${s.id}, 'sell')">Sell</button>
+  try {
+    const meRes = await fetch('/api/auth_me.php');
+    const me = await meRes.json();
+    if (!me.user) return window.location = '/public/index.html';
+    const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
+      fetch('/api/portfolio.php'),
+      fetch('/api/stocks.php'),
+      fetch('/api/crisis.php')
+    ]);
+    if (!portfolioRes.ok || !stocksRes.ok || !crisisRes.ok) {
+      throw new Error('Failed to load dashboard data');
+    }
+    const portfolio = await portfolioRes.json();
+    const stocks = await stocksRes.json();
+    const crisis = await crisisRes.json();
+    document.getElementById('cash').textContent = `Cash Balance: ${portfolio.portfolio.cash_balance}`;
+    const posBody = document.querySelector('#positions tbody');
+    posBody.innerHTML = portfolio.positions.map(p => `<tr><td>${p.ticker}</td><td>${p.quantity}</td><td>${p.avg_price}</td></tr>`).join('');
+    document.getElementById('stocks').innerHTML = stocks.stocks.map(s => `
+      <div class="card">
+        <strong>${s.ticker}</strong> ${s.name}<br />
+        Price: ${s.current_price || s.initial_price}
+        <div class="actions">
+          <button onclick="trade(${s.id}, 'buy')">Buy</button>
+          <button onclick="trade(${s.id}, 'sell')">Sell</button>
+        </div>
       </div>
-    </div>
-  `).join('');
-  document.querySelector('#shorts tbody').innerHTML = portfolio.shorts.map(sh => `<tr><td>${sh.ticker}</td><td>${sh.quantity}</td><td>${sh.open_price}</td><td>${sh.expires_at}</td></tr>`).join('');
-  document.getElementById('scenarios').innerHTML = crisis.scenarios.map(sc => `<li><strong>${sc.title}</strong> - ${sc.description}</li>`).join('');
-  connectSocket(me.user.institution_id);
+    `).join('');
+    document.querySelector('#shorts tbody').innerHTML = portfolio.shorts.map(sh => `<tr><td>${sh.ticker}</td><td>${sh.quantity}</td><td>${sh.open_price}</td><td>${sh.expires_at}</td></tr>`).join('');
+    document.getElementById('scenarios').innerHTML = crisis.scenarios.map(sc => `<li><strong>${sc.title}</strong> - ${sc.description}</li>`).join('');
+    connectSocket(me.user.institution_id);
+  } catch (err) {
+    console.error('Dashboard initialization failed:', err);
+    alert('Failed to load dashboard. Please refresh the page.');
+  }
 }
 
 async function trade(stockId, type) {
