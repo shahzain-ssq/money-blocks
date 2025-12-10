@@ -1,13 +1,14 @@
 """Lightweight WebSocket broadcaster for institution-scoped events."""
 import asyncio
 import json
+import os
 from typing import Dict, Set
 
 import websockets
 from aiohttp import web
 
 connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
-ADMIN_TOKEN = 'change-me'
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 WS_SERVER_PORT = 8765
 ADMIN_PORT = 8766
 
@@ -43,6 +44,8 @@ async def broadcast(message: dict):
 
 
 async def admin_broadcast(request):
+    if not ADMIN_TOKEN:
+        raise RuntimeError("ADMIN_TOKEN environment variable must be set for admin endpoints")
     if request.headers.get('X-WS-TOKEN') != ADMIN_TOKEN:
         return web.Response(status=401, text='unauthorized')
     data = await request.json()
