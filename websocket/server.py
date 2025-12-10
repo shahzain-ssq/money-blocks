@@ -30,10 +30,16 @@ async def unregister(ws, institution_id: int):
             connections.pop(institution_id)
 
 
-async def handler(ws, path):
+async def handler(ws, _path):
     query = ws.path.split('?', 1)[1] if '?' in ws.path else ''
     params = dict(part.split('=') for part in query.split('&') if '=' in part)
-    institution_id = int(params.get('institution_id', 0))
+    try:
+        institution_id = int(params.get('institution_id', 0))
+        if institution_id <= 0:
+            raise ValueError("Invalid institution_id")
+    except (ValueError, KeyError):
+        await ws.close(code=1008, reason="Missing or invalid institution_id")
+        return
     await register(ws, institution_id)
     try:
         async for _ in ws:
