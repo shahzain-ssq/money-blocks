@@ -1,6 +1,19 @@
 let ws;
+let configPromise;
+
+async function loadConfig() {
+  if (!configPromise) {
+    configPromise = fetch('/api/config.php').then((res) => {
+      if (!res.ok) throw new Error('Failed to load config');
+      return res.json();
+    });
+  }
+  return configPromise;
+}
+
 async function init() {
   try {
+    const appConfig = await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
     const me = await meRes.json();
     if (!me.user) return window.location = '/public/index.html';
@@ -89,7 +102,7 @@ async function init() {
       li.appendChild(document.createTextNode(` - ${sc.description}`));
       scenariosEl.appendChild(li);
     });
-    connectSocket(me.user.institution_id);
+    await connectSocket(me.user.institution_id, appConfig.wsPublicUrl);
   } catch (err) {
     console.error('Dashboard initialization failed:', err);
     alert('Failed to load dashboard. Please refresh the page.');
@@ -106,10 +119,14 @@ async function trade(stockId, type) {
   init();
 }
 
-function connectSocket(institutionId) {
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsHost = window.WS_HOST || window.location.hostname + ':8765';
-  ws = new WebSocket(`${wsProtocol}//${wsHost}/ws?institution_id=${institutionId}`);
+async function connectSocket(institutionId, wsPublicUrl) {
+  if (!wsPublicUrl) {
+    console.warn('WS_PUBLIC_URL not set; skipping WebSocket connection');
+    return;
+  }
+  const url = new URL(wsPublicUrl);
+  url.searchParams.set('institution_id', institutionId);
+  ws = new WebSocket(url.toString());
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'price_update') {
@@ -119,6 +136,9 @@ function connectSocket(institutionId) {
       alert(`New scenario: ${msg.title}`);
       init();
     }
+  };
+  ws.onclose = () => {
+    console.warn('WebSocket disconnected');
   };
 }
 
