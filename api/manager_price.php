@@ -11,7 +11,11 @@ $price = (float)($input['price'] ?? 0);
 if ($stockId <= 0 || $price <= 0) {
     jsonResponse(['error' => 'invalid_input'], 422);
 }
-StockService::updatePrice($stockId, $price, (int)$user['institution_id']);
+try {
+    StockService::updatePrice($stockId, $price, (int)$user['institution_id']);
+} catch (RuntimeException $e) {
+    jsonResponse(['error' => 'stock_not_found'], 404);
+}
 BroadcastService::send([
     'type' => 'price_update',
     'institution_id' => (int)$user['institution_id'],

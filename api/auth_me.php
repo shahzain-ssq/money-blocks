@@ -4,4 +4,4 @@ $user = Auth::currentUser();
 if (!$user) {
     jsonResponse(['user' => null]);
 }
-jsonResponse(['user' => $user]);
+jsonResponse(['user' => sanitizeUser($user)]);

@@ -10,7 +10,7 @@ class TradeService
         $pdo->beginTransaction();
         $portfolio = self::getPortfolioRow($pdo, $userId);
         $stock = self::loadStock($pdo, $stockId, $institutionId);
-        $price = self::currentPrice($pdo, $stockId, $stock['initial_price']);
+        $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
         $cost = $price * $quantity;
         if ($portfolio['cash_balance'] < $cost) {
             $pdo->rollBack();
@@ -29,7 +29,7 @@ class TradeService
         $pdo->beginTransaction();
         $portfolio = self::getPortfolioRow($pdo, $userId);
         $stock = self::loadStock($pdo, $stockId, $institutionId);
-        $price = self::currentPrice($pdo, $stockId, $stock['initial_price']);
+        $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
         $posStmt = $pdo->prepare('SELECT * FROM positions WHERE portfolio_id = ? AND stock_id = ? FOR UPDATE');
         $posStmt->execute([$portfolio['id'], $stockId]);
         $position = $posStmt->fetch();
@@ -55,7 +55,7 @@ class TradeService
         $pdo->beginTransaction();
         $portfolio = self::getPortfolioRow($pdo, $userId);
         $stock = self::loadStock($pdo, $stockId, $institutionId);
-        $price = self::currentPrice($pdo, $stockId, $stock['initial_price']);
+        $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
         $expiresAt = (new DateTimeImmutable())->modify("+{$durationSeconds} seconds");
         $pdo->prepare('INSERT INTO short_positions (portfolio_id, stock_id, quantity, open_price, open_at, duration_seconds, expires_at, closed) VALUES (?, ?, ?, ?, NOW(), ?, ?, 0)')
             ->execute([$portfolio['id'], $stockId, $quantity, $price, $durationSeconds, $expiresAt->format('Y-m-d H:i:s')]);
@@ -76,7 +76,7 @@ class TradeService
         $stmt->execute([$institutionId]);
         $closed = [];
         foreach ($stmt->fetchAll() as $short) {
-            $price = self::currentPrice($pdo, $short['stock_id'], $short['initial_price']);
+            $price = self::currentPrice($pdo, $short['stock_id'], $short['initial_price'], $institutionId);
             $profit = ($short['open_price'] - $price) * $short['quantity'];
             $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = NOW() WHERE id = ?')
                 ->execute([$profit, $short['portfolio_id']]);
@@ -114,10 +114,10 @@ class TradeService
         return $stock;
     }
 
-    private static function currentPrice(PDO $pdo, int $stockId, float $default): float
+    private static function currentPrice(PDO $pdo, int $stockId, float $default, int $institutionId): float
     {
-        $stmt = $pdo->prepare('SELECT price FROM stock_prices WHERE stock_id = ? ORDER BY created_at DESC LIMIT 1');
-        $stmt->execute([$stockId]);
+        $stmt = $pdo->prepare('SELECT sp.price FROM stock_prices sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.stock_id = ? AND s.institution_id = ? ORDER BY sp.created_at DESC LIMIT 1');
+        $stmt->execute([$stockId, $institutionId]);
         $row = $stmt->fetch();
         return $row ? (float)$row['price'] : (float)$default;
     }

@@ -17,6 +17,12 @@ class StockService
     public static function updatePrice(int $stockId, float $price, int $institutionId): void
     {
         $pdo = Database::getConnection();
+        $stockStmt = $pdo->prepare('SELECT id FROM stocks WHERE id = ? AND institution_id = ?');
+        $stockStmt->execute([$stockId, $institutionId]);
+        if (!$stockStmt->fetch()) {
+            throw new RuntimeException('Stock not found for institution');
+        }
+
         $pdo->prepare('INSERT INTO stock_prices (stock_id, price, created_at) VALUES (?, ?, NOW())')->execute([$stockId, $price]);
         $pdo->prepare('UPDATE stocks SET updated_at = NOW() WHERE id = ? AND institution_id = ?')->execute([$stockId, $institutionId]);
     }

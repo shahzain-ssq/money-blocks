@@ -17,4 +17,4 @@ $user = Auth::login($identifier, $password, $institutionId);
 if (!$user) {
     jsonResponse(['error' => 'invalid_credentials'], 401);
 }
-jsonResponse(['user' => $user]);
+jsonResponse(['user' => sanitizeUser($user)]);

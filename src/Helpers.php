@@ -9,6 +9,19 @@ function jsonResponse($data, int $code = 200): void
     exit;
 }
 
+function sanitizeUser(array $user): array
+{
+    return [
+        'id' => (int)$user['id'],
+        'institution_id' => (int)$user['institution_id'],
+        'email' => $user['email'],
+        'username' => $user['username'],
+        'role' => $user['role'],
+        'created_at' => $user['created_at'],
+        'updated_at' => $user['updated_at'],
+    ];
+}
+
 function requireManager(array $user): void
 {
     if ($user['role'] !== 'manager' && $user['role'] !== 'admin') {
