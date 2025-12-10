@@ -4,7 +4,15 @@ require_once __DIR__ . '/../src/InstitutionService.php';
 require_once __DIR__ . '/../src/Auth.php';
 
 // In production, exchange code for token, verify email and domain.
-$institutionId = (int)($_GET['state'] ?? 0);
+$receivedState = $_GET['state'] ?? '';
+Auth::startSession();
+$storedState = $_SESSION['oauth_state'] ?? null;
+$institutionId = (int)($_SESSION['oauth_institution_id'] ?? 0);
+if (!$storedState || !$receivedState || !hash_equals($storedState, $receivedState)) {
+    echo 'Invalid OAuth state.';
+    exit;
+}
+unset($_SESSION['oauth_state'], $_SESSION['oauth_institution_id']);
 $email = $_GET['email'] ?? null; // placeholder for demo
 if (!$institutionId || !$email) {
     echo 'Invalid Google callback.';

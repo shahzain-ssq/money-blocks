@@ -16,14 +16,29 @@ if ($method === 'GET') {
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 if ($method === 'POST') {
+    $title = trim($input['title'] ?? '');
+    if ($title === '') {
+        jsonResponse(['error' => 'title_required'], 422);
+    }
+
+    $startsAt = $input['starts_at'] ?? null;
+    $endsAt = $input['ends_at'] ?? null;
+    if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
+        $startTimestamp = strtotime($startsAt);
+        $endTimestamp = strtotime($endsAt);
+        if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
+            jsonResponse(['error' => 'invalid_time_range'], 422);
+        }
+    }
+
     $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, ends_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())')
         ->execute([
             $user['institution_id'],
-            $input['title'] ?? '',
+            $title,
             $input['description'] ?? '',
             $input['status'] ?? 'draft',
-            $input['starts_at'] ?? null,
-            $input['ends_at'] ?? null,
+            $startsAt ?? null,
+            $endsAt ?? null,
         ]);
     $id = $pdo->lastInsertId();
     if (($input['status'] ?? '') === 'published') {
@@ -31,7 +46,7 @@ if ($method === 'POST') {
             'type' => 'crisis_published',
             'institution_id' => (int)$user['institution_id'],
             'scenario_id' => (int)$id,
-            'title' => $input['title'] ?? '',
+            'title' => $title,
             'description' => $input['description'] ?? '',
         ]);
     }
@@ -43,22 +58,43 @@ if ($method === 'PUT') {
     if (!$id) {
         jsonResponse(['error' => 'id_required'], 422);
     }
-    $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?')
-        ->execute([
-            $input['title'] ?? '',
-            $input['description'] ?? '',
-            $input['status'] ?? 'draft',
-            $input['starts_at'] ?? null,
-            $input['ends_at'] ?? null,
-            $id,
-            $user['institution_id'],
-        ]);
+
+    $title = trim($input['title'] ?? '');
+    if ($title === '') {
+        jsonResponse(['error' => 'title_required'], 422);
+    }
+
+    $startsAt = $input['starts_at'] ?? null;
+    $endsAt = $input['ends_at'] ?? null;
+    if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
+        $startTimestamp = strtotime($startsAt);
+        $endTimestamp = strtotime($endsAt);
+        if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
+            jsonResponse(['error' => 'invalid_time_range'], 422);
+        }
+    }
+
+    $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+    $stmt->execute([
+        $title,
+        $input['description'] ?? '',
+        $input['status'] ?? 'draft',
+        $startsAt ?? null,
+        $endsAt ?? null,
+        $id,
+        $user['institution_id'],
+    ]);
+
+    if ($stmt->rowCount() === 0) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+
     if (($input['status'] ?? '') === 'published') {
         BroadcastService::send([
             'type' => 'crisis_published',
             'institution_id' => (int)$user['institution_id'],
             'scenario_id' => $id,
-            'title' => $input['title'] ?? '',
+            'title' => $title,
             'description' => $input['description'] ?? '',
         ]);
     }
