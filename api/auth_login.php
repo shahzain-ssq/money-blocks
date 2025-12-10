@@ -8,7 +8,12 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5;
 
 function getRateLimitKey(int $institutionId): string
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    // Check X-Forwarded-For from trusted proxies, fallback to REMOTE_ADDR
+    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    // If X-Forwarded-For contains multiple IPs, take the first (client IP)
+    if (strpos($ip, ',') !== false) {
+        $ip = trim(explode(',', $ip)[0]);
+    }
     return $institutionId . '|' . $ip;
 }
 
