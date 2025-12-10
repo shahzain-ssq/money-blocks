@@ -8,7 +8,13 @@ import websockets
 from aiohttp import web
 
 connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
+# Align token name with PHP broadcaster (WS_ADMIN_TOKEN) while still
+# accepting ADMIN_TOKEN for backward compatibility.
+ADMIN_TOKEN = (
+    os.environ.get("ADMIN_TOKEN")
+    or os.environ.get("WS_ADMIN_TOKEN")
+    or "change-me"
+)
 WS_SERVER_PORT = 8765
 ADMIN_PORT = 8766
 
