@@ -121,7 +121,8 @@ async function trade(stockId, type) {
 
 async function connectSocket(institutionId, wsPublicUrl) {
   if (!wsPublicUrl) {
-    throw new Error('Missing WS_PUBLIC_URL in configuration');
+    console.warn('WS_PUBLIC_URL not set; skipping WebSocket connection');
+    return;
   }
   const url = new URL(wsPublicUrl);
   url.searchParams.set('institution_id', institutionId);
