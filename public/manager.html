@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manager Panel</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Manager Panel</h1>
+    <nav><a href="/public/dashboard.html">Back to Dashboard</a></nav>
+  </header>
+  <main class="layout">
+    <section>
+      <h2>Stock Management</h2>
+      <form id="stockForm">
+        <input type="text" name="ticker" placeholder="Ticker" required />
+        <input type="text" name="name" placeholder="Name" required />
+        <input type="number" name="initial_price" placeholder="Initial Price" step="0.01" required />
+        <button type="submit">Add Stock</button>
+      </form>
+      <div id="managerStocks"></div>
+      <form id="priceForm">
+        <input type="number" name="stock_id" placeholder="Stock ID" required />
+        <input type="number" name="price" placeholder="New Price" step="0.01" required />
+        <button type="submit">Update Price</button>
+      </form>
+    </section>
+    <section>
+      <h2>Crisis Scenarios</h2>
+      <form id="crisisForm">
+        <input type="text" name="title" placeholder="Title" required />
+        <textarea name="description" placeholder="Description"></textarea>
+        <select name="status"><option value="draft">Draft</option><option value="published">Publish</option></select>
+        <button type="submit">Save Scenario</button>
+      </form>
+      <div id="crisisList"></div>
+    </section>
+    <section>
+      <h2>Participants</h2>
+      <div id="participants"></div>
+    </section>
+  </main>
+  <script src="/public/manager.js"></script>
+</body>
+</html>
