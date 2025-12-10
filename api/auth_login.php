@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../src/Helpers.php';
 require_once __DIR__ . '/../src/InstitutionService.php';
-
+require_once __DIR__ . '/../src/Auth.php';
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $identifier = $input['identifier'] ?? '';
 $password = $input['password'] ?? '';
