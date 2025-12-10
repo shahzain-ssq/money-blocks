@@ -15,8 +15,14 @@ ADMIN_TOKEN = (
     or os.environ.get("WS_ADMIN_TOKEN")
     or "change-me"
 )
-WS_SERVER_PORT = 8765
-ADMIN_PORT = 8766
+WS_SERVER_HOST = os.environ.get("WS_SERVER_HOST", "127.0.0.1")
+WS_SERVER_PORT = int(os.environ.get("WS_SERVER_PORT", "8787"))
+ADMIN_PORT = int(os.environ.get("WS_ADMIN_PORT", "8766"))
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.environ.get("WS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+}
 
 
 async def register(ws, institution_id: int):
@@ -31,6 +37,10 @@ async def unregister(ws, institution_id: int):
 
 
 async def handler(ws, _path):
+    origin = ws.request_headers.get("Origin")
+    if ALLOWED_ORIGINS and origin and origin.rstrip("/") not in ALLOWED_ORIGINS:
+        await ws.close(code=1008, reason="origin not allowed")
+        return
     query = ws.path.split('?', 1)[1] if '?' in ws.path else ''
     params = dict(part.split('=') for part in query.split('&') if '=' in part)
     try:
@@ -66,14 +76,19 @@ async def admin_broadcast(request):
 
 
 async def start_servers():
-    ws_server = await websockets.serve(handler, '0.0.0.0', WS_SERVER_PORT, ping_interval=None)
+    ws_server = await websockets.serve(
+        handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=None
+    )
     app = web.Application()
     app.router.add_post('/admin/broadcast', admin_broadcast)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', ADMIN_PORT)
+    site = web.TCPSite(runner, WS_SERVER_HOST, ADMIN_PORT)
     await site.start()
-    print(f"WebSocket listening on {WS_SERVER_PORT}, admin HTTP on {ADMIN_PORT}")
+    print(
+        "WebSocket listening on "
+        f"{WS_SERVER_HOST}:{WS_SERVER_PORT}, admin HTTP on {ADMIN_PORT}"
+    )
     await ws_server.wait_closed()
 
 

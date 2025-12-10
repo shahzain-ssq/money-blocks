@@ -33,14 +33,16 @@ sql/schema.sql       # MariaDB schema
    - Copy `config/env.php` defaults and adjust via environment variables:
      - `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`
      - `SESSION_NAME`
+     - `WS_PUBLIC_URL` (public `wss://` hostname served through Cloudflare Tunnel)
      - `WS_ADMIN_TOKEN`, `WS_BROADCAST_URL`
-   - Point `WS_BROADCAST_URL` to the admin endpoint of the Python server (default `http://localhost:8766/admin/broadcast`).
+   - Point `WS_BROADCAST_URL` to the admin endpoint of the Python server (default `http://127.0.0.1:8766/admin/broadcast`).
 
 4. **Run the WebSocket server**
    ```bash
    pip install websockets aiohttp
    python websocket/server.py
    ```
+   The server binds to `127.0.0.1:8787` (WebSocket) and `127.0.0.1:8766` (admin HTTP), which can be exposed publicly via a Cloudflare Tunnel.
 
 5. **Run the PHP API/front end**
    ```bash

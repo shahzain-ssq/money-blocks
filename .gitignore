@@ -1,0 +1,7 @@
+# Ignore environment files
+*.env
+!example.env
+
+# Node/npm/other caches
+node_modules/
+vendor/
