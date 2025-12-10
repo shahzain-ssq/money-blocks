@@ -17,19 +17,78 @@ async function init() {
     const crisis = await crisisRes.json();
     document.getElementById('cash').textContent = `Cash Balance: ${portfolio.portfolio.cash_balance}`;
     const posBody = document.querySelector('#positions tbody');
-    posBody.innerHTML = portfolio.positions.map(p => `<tr><td>${p.ticker}</td><td>${p.quantity}</td><td>${p.avg_price}</td></tr>`).join('');
-    document.getElementById('stocks').innerHTML = stocks.stocks.map(s => `
-      <div class="card">
-        <strong>${s.ticker}</strong> ${s.name}<br />
-        Price: ${s.current_price || s.initial_price}
-        <div class="actions">
-          <button onclick="trade(${s.id}, 'buy')">Buy</button>
-          <button onclick="trade(${s.id}, 'sell')">Sell</button>
-        </div>
-      </div>
-    `).join('');
-    document.querySelector('#shorts tbody').innerHTML = portfolio.shorts.map(sh => `<tr><td>${sh.ticker}</td><td>${sh.quantity}</td><td>${sh.open_price}</td><td>${sh.expires_at}</td></tr>`).join('');
-    document.getElementById('scenarios').innerHTML = crisis.scenarios.map(sc => `<li><strong>${sc.title}</strong> - ${sc.description}</li>`).join('');
+    posBody.innerHTML = '';
+    portfolio.positions.forEach((p) => {
+      const tr = document.createElement('tr');
+      const tickerTd = document.createElement('td');
+      tickerTd.textContent = p.ticker;
+      const qtyTd = document.createElement('td');
+      qtyTd.textContent = p.quantity;
+      const priceTd = document.createElement('td');
+      priceTd.textContent = p.avg_price;
+      tr.appendChild(tickerTd);
+      tr.appendChild(qtyTd);
+      tr.appendChild(priceTd);
+      posBody.appendChild(tr);
+    });
+
+    const stocksEl = document.getElementById('stocks');
+    stocksEl.innerHTML = '';
+    stocks.stocks.forEach((s) => {
+      const card = document.createElement('div');
+      card.classList.add('card');
+
+      const strong = document.createElement('strong');
+      strong.textContent = s.ticker;
+      card.appendChild(strong);
+      card.appendChild(document.createTextNode(` ${s.name}`));
+      card.appendChild(document.createElement('br'));
+      card.appendChild(document.createTextNode(`Price: ${s.current_price || s.initial_price}`));
+
+      const actions = document.createElement('div');
+      actions.classList.add('actions');
+      const buyBtn = document.createElement('button');
+      buyBtn.textContent = 'Buy';
+      buyBtn.addEventListener('click', () => trade(s.id, 'buy'));
+      const sellBtn = document.createElement('button');
+      sellBtn.textContent = 'Sell';
+      sellBtn.addEventListener('click', () => trade(s.id, 'sell'));
+      actions.appendChild(buyBtn);
+      actions.appendChild(sellBtn);
+      card.appendChild(actions);
+
+      stocksEl.appendChild(card);
+    });
+
+    const shortsBody = document.querySelector('#shorts tbody');
+    shortsBody.innerHTML = '';
+    portfolio.shorts.forEach((sh) => {
+      const tr = document.createElement('tr');
+      const tickerTd = document.createElement('td');
+      tickerTd.textContent = sh.ticker;
+      const qtyTd = document.createElement('td');
+      qtyTd.textContent = sh.quantity;
+      const openPriceTd = document.createElement('td');
+      openPriceTd.textContent = sh.open_price;
+      const expiresTd = document.createElement('td');
+      expiresTd.textContent = sh.expires_at;
+      tr.appendChild(tickerTd);
+      tr.appendChild(qtyTd);
+      tr.appendChild(openPriceTd);
+      tr.appendChild(expiresTd);
+      shortsBody.appendChild(tr);
+    });
+
+    const scenariosEl = document.getElementById('scenarios');
+    scenariosEl.innerHTML = '';
+    crisis.scenarios.forEach((sc) => {
+      const li = document.createElement('li');
+      const strong = document.createElement('strong');
+      strong.textContent = sc.title;
+      li.appendChild(strong);
+      li.appendChild(document.createTextNode(` - ${sc.description}`));
+      scenariosEl.appendChild(li);
+    });
     connectSocket(me.user.institution_id);
   } catch (err) {
     console.error('Dashboard initialization failed:', err);
