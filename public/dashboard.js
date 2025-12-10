@@ -112,11 +112,23 @@ async function init() {
 async function trade(stockId, type) {
   const qty = prompt('Quantity?');
   if (!qty) return;
-  const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stock_id: stockId, quantity: Number(qty) }) });
-  const data = await res.json();
-  alert(JSON.stringify(data));
-  init();
+  try {
+    const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
+    const res = await fetch(endpoint, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ stock_id: stockId, quantity: Number(qty) }) 
+    });
+    if (!res.ok) {
+      throw new Error(`Trade failed with status ${res.status}`);
+    }
+    const data = await res.json();
+    alert(data.message || 'Trade executed successfully');
+    init();
+  } catch (err) {
+    console.error('Trade failed:', err);
+    alert('Trade failed. Please try again.');
+  }
 }
 
 async function connectSocket(institutionId, wsPublicUrl) {
