@@ -5,7 +5,7 @@ return [
     'db_user' => getenv('DB_USER') ?: 'root',
     'db_pass' => getenv('DB_PASS') ?: '',
     'session_name' => getenv('SESSION_NAME') ?: 'finportal_session',
-    'session_domain' => getenv('SESSION_DOMAIN') ?: '',
+    'session_domain' => trim(getenv('SESSION_DOMAIN') ?: ''),
     'ws_public_url' => getenv('WS_PUBLIC_URL') ?: '',
     // No insecure default: require WS_ADMIN_TOKEN to be set in production.
     'ws_admin_token' => getenv('WS_ADMIN_TOKEN') ?: '',

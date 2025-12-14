@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/Proxy.php';
 
 class Auth
 {
@@ -7,11 +8,28 @@ class Auth
     {
         $config = require __DIR__ . '/../config/env.php';
         if (session_status() === PHP_SESSION_NONE) {
+            $trustedProxies = parseTrustedProxies();
+            $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+            $isTrustedProxy = isTrustedProxyAddress($remoteAddr, $trustedProxies);
+
+            $isHttps = !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
+            if ($isTrustedProxy) {
+                // Only honor forwarded proto from trusted proxies to avoid spoofing by clients.
+                $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+                if ($forwardedProto !== '') {
+                    $firstProto = strtolower(trim(explode(',', $forwardedProto)[0]));
+                    if ($firstProto === 'https') {
+                        $isHttps = true;
+                    } elseif ($firstProto === 'http') {
+                        $isHttps = false;
+                    }
+                }
+            }
+
             $sessionOptions = [
                 'lifetime' => 0,
                 'path' => '/',
-                'secure' => (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
-                    || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'),
+                'secure' => $isHttps,
                 'httponly' => true,
                 'samesite' => 'Lax',
             ];
