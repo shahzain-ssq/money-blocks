@@ -7,7 +7,21 @@ class Auth
     {
         $config = require __DIR__ . '/../config/env.php';
         if (session_status() === PHP_SESSION_NONE) {
+            $sessionOptions = [
+                'lifetime' => 0,
+                'path' => '/',
+                'secure' => (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+                    || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ];
+
+            if (!empty($config['session_domain'])) {
+                $sessionOptions['domain'] = $config['session_domain'];
+            }
+
             session_name($config['session_name']);
+            session_set_cookie_params($sessionOptions);
             session_start();
         }
     }
