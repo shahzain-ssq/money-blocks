@@ -1,0 +1,14 @@
+DirectoryIndex index.php index.html
+
+RewriteEngine On
+
+# If the request already targets /public, do nothing
+RewriteRule ^public/ - [L]
+
+# If a real file/dir exists in the docroot, serve it (optional)
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Otherwise, serve everything from /public
+RewriteRule ^(.*)$ public/$1 [L]
