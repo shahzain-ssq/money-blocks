@@ -76,6 +76,7 @@ Auth::startSession();
 $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
 $_SESSION['oauth_institution_id'] = $institutionId;
+unset($_SESSION['oauth_redirect_uri']);
 
 $configuredRedirect = getenv('GOOGLE_REDIRECT_URI');
 $allowedHostsEnv = getenv('ALLOWED_OAUTH_HOSTS') ?: '';
@@ -131,6 +132,8 @@ if (!$isValidHost || !$isValidScheme || !$isValidPath) {
 
     $redirectUri = $defaultRedirect;
 }
+
+$_SESSION['oauth_redirect_uri'] = $redirectUri;
 
 $params = [
     'client_id' => $institution['google_client_id'],
