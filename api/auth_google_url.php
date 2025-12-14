@@ -31,7 +31,7 @@ function isHttpsRequest(): bool
 
 $institutionId = (int)($_GET['institution_id'] ?? 0);
 $institution = $institutionId ? InstitutionService::getInstitution($institutionId) : null;
-if (!$institution) {
+if (!$institution || empty($institution['google_client_id'])) {
     jsonResponse(['error' => 'invalid_institution'], 400);
 }
 Auth::startSession();
