@@ -20,9 +20,9 @@
           </div>
           <form id="loginForm" style="margin-top:1rem; display:grid; gap:0.75rem;">
             <label for="identifier">Username or Email</label>
-            <input type="text" name="identifier" id="identifier" class="input" required />
+            <input type="text" name="identifier" id="identifier" class="input" required autocomplete="username" />
             <label for="password">Password</label>
-            <input type="password" name="password" id="password" class="input" required />
+            <input type="password" name="password" id="password" class="input" required autocomplete="current-password" />
             <button class="btn" type="submit">Login</button>
           </form>
           <p id="status" class="muted"></p>

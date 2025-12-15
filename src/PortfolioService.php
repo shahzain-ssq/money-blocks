@@ -44,6 +44,8 @@ class PortfolioService
             $current = $sh['current_price'] ?? $sh['open_price'] ?? 0;
             $open = $sh['open_price'] ?? 0;
             $sh['pl'] = ($open - $current) * $sh['quantity'];
+            $portfolioValue -= $current * $sh['quantity'];
+            $unrealized += $sh['pl'];
         }
 
         return [

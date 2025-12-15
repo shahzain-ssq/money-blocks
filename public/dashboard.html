@@ -73,11 +73,13 @@
             </div>
             <div id="tradeDetails" class="muted" style="margin:0.5rem 0;"></div>
             <div class="form-row">
-              <input type="number" class="input" id="buyQty" placeholder="Buy quantity" min="1" />
+              <label class="sr-only" for="buyQty">Buy quantity</label>
+              <input type="number" class="input" id="buyQty" placeholder="Buy quantity" min="1" aria-label="Buy quantity" />
               <button class="btn" id="buyBtn">Buy</button>
             </div>
             <div class="form-row">
-              <input type="number" class="input" id="sellQty" placeholder="Sell quantity" min="1" />
+              <label class="sr-only" for="sellQty">Sell quantity</label>
+              <input type="number" class="input" id="sellQty" placeholder="Sell quantity" min="1" aria-label="Sell quantity" />
               <button class="btn secondary" id="sellBtn">Sell</button>
             </div>
           </div>
@@ -87,17 +89,18 @@
           <div class="grid two">
             <div class="card">
               <h3>Open Short</h3>
-              <div class="form-row">
-                <input class="input" id="shortSearch" placeholder="Find stock" aria-label="Find stock" />
-                <select class="input" id="shortSelect"></select>
-              </div>
-              <div class="form-row">
-                <input type="number" class="input" id="shortQty" placeholder="Quantity" min="1" />
-                <select class="input" id="shortDuration">
-                  <option value="">Duration (seconds)</option>
-                  <option value="3600">1 hour</option>
-                  <option value="86400">1 day</option>
-                  <option value="604800">1 week</option>
+            <div class="form-row">
+              <input class="input" id="shortSearch" placeholder="Find stock" aria-label="Find stock" />
+              <select class="input" id="shortSelect"></select>
+            </div>
+            <div class="form-row">
+              <label class="sr-only" for="shortQty">Short quantity</label>
+              <input type="number" class="input" id="shortQty" placeholder="Quantity" min="1" aria-label="Short quantity" />
+              <select class="input" id="shortDuration">
+                <option value="">Duration (seconds)</option>
+                <option value="3600">1 hour</option>
+                <option value="86400">1 day</option>
+                <option value="604800">1 week</option>
                 </select>
               </div>
               <button class="btn" id="shortOpenBtn">Open Short</button>
@@ -134,9 +137,12 @@
         <section id="manage-stocks" class="section">
           <div class="card">
             <div class="form-row">
-              <input class="input" id="newTicker" placeholder="Ticker" />
-              <input class="input" id="newName" placeholder="Name" />
-              <input class="input" id="newPrice" type="number" placeholder="Initial price" step="0.01" />
+              <label class="sr-only" for="newTicker">Ticker</label>
+              <input class="input" id="newTicker" placeholder="Ticker" aria-label="Ticker" />
+              <label class="sr-only" for="newName">Name</label>
+              <input class="input" id="newName" placeholder="Name" aria-label="Name" />
+              <label class="sr-only" for="newPrice">Initial price</label>
+              <input class="input" id="newPrice" type="number" placeholder="Initial price" step="0.01" aria-label="Initial price" />
               <button class="btn" id="createStockBtn">Create Stock</button>
             </div>
             <table class="table" id="manageStocksTable">
@@ -155,7 +161,8 @@
             </div>
             <div id="priceDetails" class="muted"></div>
             <div class="form-row">
-              <input class="input" id="newPriceValue" type="number" step="0.01" placeholder="New price" />
+              <label class="sr-only" for="newPriceValue">New price</label>
+              <input class="input" id="newPriceValue" type="number" step="0.01" placeholder="New price" aria-label="New price" />
               <button class="btn" id="updatePriceBtn">Update Price</button>
             </div>
           </div>
@@ -165,16 +172,21 @@
           <div class="card">
             <h3>Create Scenario</h3>
             <div class="form-row">
-              <input class="input" id="scenarioTitle" placeholder="Title" />
-              <select class="input" id="scenarioStatus">
+              <label class="sr-only" for="scenarioTitle">Scenario title</label>
+              <input class="input" id="scenarioTitle" placeholder="Title" aria-label="Scenario title" />
+              <label class="sr-only" for="scenarioStatus">Scenario status</label>
+              <select class="input" id="scenarioStatus" aria-label="Scenario status">
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
               </select>
             </div>
-            <textarea class="input" id="scenarioDescription" placeholder="Description" rows="3"></textarea>
+            <label class="sr-only" for="scenarioDescription">Scenario description</label>
+            <textarea class="input" id="scenarioDescription" placeholder="Description" rows="3" aria-label="Scenario description"></textarea>
             <div class="form-row">
-              <input class="input" id="scenarioStart" type="datetime-local" />
-              <input class="input" id="scenarioEnd" type="datetime-local" />
+              <label class="sr-only" for="scenarioStart">Scenario start</label>
+              <input class="input" id="scenarioStart" type="datetime-local" aria-label="Scenario start" />
+              <label class="sr-only" for="scenarioEnd">Scenario end</label>
+              <input class="input" id="scenarioEnd" type="datetime-local" aria-label="Scenario end" />
             </div>
             <button class="btn" id="createScenarioBtn">Save Scenario</button>
           </div>
