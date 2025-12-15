@@ -30,13 +30,8 @@ for origin in os.environ.get("WS_ALLOWED_ORIGINS", "").split(","):
         ALLOWED_ORIGINS.add(normalized_origin)
 
 if not ALLOWED_ORIGINS:
-    print(
-        json.dumps(
-            {
-                "event": "origin_allow_all_warning",
-                "message": "WS_ALLOWED_ORIGINS not set; accepting all origins",
-            }
-        )
+    raise RuntimeError(
+        "WS_ALLOWED_ORIGINS environment variable must be set for production security"
     )
 
 
@@ -239,6 +234,9 @@ async def start_servers():
     try:
         await ws_server.wait_closed()
     finally:
+        ws_server.close()
+        await ws_server.wait_closed()
+        await runner.cleanup()
         prune_task.cancel()
         try:
             await prune_task
@@ -247,5 +245,8 @@ async def start_servers():
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_servers())
+    if hasattr(asyncio, "run"):
+        asyncio.run(start_servers())
+    else:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(start_servers())
