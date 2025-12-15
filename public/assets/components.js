@@ -78,9 +78,9 @@ export function formatCurrency(value) {
 
 export function formatChange(value) {
   const num = Number(value) || 0;
-  const cls = num >= 0 ? 'positive' : 'negative';
-  const prefix = num >= 0 ? '+' : '';
-  return `<span class="${cls}">${prefix}${num.toFixed(2)}</span>`;
+  const className = num > 0 ? 'positive' : num < 0 ? 'negative' : 'neutral';
+  const prefix = num > 0 ? '+' : '';
+  return { text: `${prefix}${num.toFixed(2)}`, className };
 }
 
 export function pill(label, status) {

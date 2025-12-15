@@ -9,6 +9,11 @@ class StockService
      */
     private static function latestPriceFragment(string $alias = 's', string $column = 'price', int $offset = 0): string
     {
+        $allowedAliases = ['s'];
+        $allowedColumns = ['price', 'created_at'];
+        if (!in_array($alias, $allowedAliases, true) || !in_array($column, $allowedColumns, true)) {
+            throw new InvalidArgumentException('Invalid alias or column for latestPriceFragment');
+        }
         $safeOffset = max(0, $offset);
         $offsetClause = $safeOffset > 0 ? " OFFSET {$safeOffset}" : '';
         return sprintf('(SELECT %s FROM stock_prices WHERE stock_id = %s.id ORDER BY created_at DESC LIMIT 1%s)', $column, $alias, $offsetClause);
@@ -20,6 +25,7 @@ class StockService
         $currentPrice = self::latestPriceFragment();
         $currentTimestamp = self::latestPriceFragment('s', 'created_at');
         $previousPrice = self::latestPriceFragment('s', 'price', 1);
+        // updated_at here reflects the latest price timestamp to keep UI displays consistent with price freshness.
         $stmt = $pdo->prepare("SELECT s.*,{$currentPrice} AS current_price,{$currentTimestamp} AS updated_at,{$previousPrice} AS previous_price FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker");
         $stmt->execute([$institutionId]);
         $stocks = $stmt->fetchAll();

@@ -21,6 +21,10 @@ async function init() {
   try {
     const appConfig = await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
+    if (!meRes.ok) {
+      window.location = '/index.html';
+      return;
+    }
     const me = await meRes.json();
     if (!me.user) return window.location = '/index.html';
     const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
@@ -141,6 +145,13 @@ async function connectSocket(institutionId, wsPublicUrl) {
   if (!wsPublicUrl) {
     console.warn('WS_PUBLIC_URL not set; skipping WebSocket connection');
     return;
+  }
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    try {
+      ws.close();
+    } catch (err) {
+      console.warn('Error closing previous WebSocket connection', err);
+    }
   }
   const url = new URL(wsPublicUrl);
   url.searchParams.set('institution_id', institutionId);

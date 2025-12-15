@@ -22,6 +22,21 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+async function fetchJson(url, options = {}, errorMessage = 'Request failed') {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      showToast(errorMessage, 'error');
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.error(errorMessage, err);
+    showToast(errorMessage, 'error');
+    return null;
+  }
+}
+
 let portfolioRefreshTimer;
 function debouncePortfolioRefresh(callback, delay = 300) {
   clearTimeout(portfolioRefreshTimer);
@@ -104,6 +119,10 @@ async function init() {
   try {
     await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
+    if (!meRes.ok) {
+      window.location = '/index.html';
+      return;
+    }
     const me = await meRes.json();
     if (!me.user) {
       window.location = '/index.html';
@@ -203,7 +222,7 @@ function renderPortfolio() {
     const tr = document.createElement('tr');
     const pl = Number(p.unrealized_pl || 0);
     const cells = [
-      escapeHtml(p.ticker),
+      p.ticker,
       Number(p.quantity ?? 0),
       formatCurrency(p.avg_price),
       formatCurrency(p.current_price || p.avg_price),
@@ -254,17 +273,19 @@ function renderLivePrices() {
     const pct = Number(s.change_pct || 0);
     const tr = document.createElement('tr');
     const tds = [
-      escapeHtml(s.ticker),
-      escapeHtml(s.name),
+      s.ticker,
+      s.name,
       formatCurrency(s.current_price || s.initial_price),
       null,
-      escapeHtml(s.updated_at ? new Date(s.updated_at).toLocaleTimeString() : '-'),
+      s.updated_at ? new Date(s.updated_at).toLocaleTimeString() : '-',
     ];
     tds.forEach((val, idx) => {
       const td = document.createElement('td');
       if (idx === 3) {
         const changeSpan = document.createElement('span');
-        changeSpan.textContent = formatChange(change);
+        const changeMeta = formatChange(change);
+        changeSpan.textContent = changeMeta.text;
+        changeSpan.className = changeMeta.className;
         const pctSpan = document.createElement('span');
         pctSpan.className = 'muted';
         pctSpan.textContent = ` (${pct.toFixed(2)}%)`;
@@ -282,16 +303,25 @@ function renderLivePrices() {
 }
 
 async function openStockDetail(stock) {
-  const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=${STOCK_HISTORY_LIMIT}`);
-  const history = await historyRes.json();
-  const prices = (history.prices || []).map((p) => p.price);
+  let prices = [];
+  try {
+    const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=${STOCK_HISTORY_LIMIT}`);
+    if (!historyRes.ok) throw new Error('history request failed');
+    const history = await historyRes.json();
+    prices = (history.prices || []).map((p) => p.price);
+  } catch (err) {
+    console.error('Failed to load stock history', err);
+    showToast('Unable to load stock history', 'error');
+  }
   const minP = Math.min(...prices, 0);
   const maxP = Math.max(...prices, 1);
   const range = maxP - minP || 1;
-  const bars = prices.map((price) => {
-    const height = Math.max(4, ((price - minP) / range) * 60);
-    return `<span style="height:${height}px"></span>`;
-  }).join('');
+  const bars = prices.length
+    ? prices.map((price) => {
+        const height = Math.max(4, ((price - minP) / range) * 60);
+        return `<span style="height:${height}px"></span>`;
+      }).join('')
+    : '<span class="empty">No history</span>';
   openModal({
     title: `${escapeHtml(stock.ticker)} · ${formatCurrency(stock.current_price || stock.initial_price)}`,
     body: `
@@ -370,12 +400,12 @@ function renderShorts() {
     const tr = document.createElement('tr');
     const pl = Number(sh.pl || 0);
     const cells = [
-      escapeHtml(sh.ticker),
+      sh.ticker,
       Number(sh.quantity ?? 0),
       formatCurrency(sh.open_price),
       formatCurrency(sh.current_price || sh.open_price),
       formatCurrency(pl),
-      escapeHtml(sh.expires_at || '-'),
+      sh.expires_at || '-',
     ];
     cells.forEach((val, idx) => {
       const td = document.createElement('td');
@@ -484,12 +514,12 @@ async function handleTrade(type) {
   const qty = Number(qtyInput.value);
   if (!select.value || qty <= 0) return showToast('Select a stock and enter quantity', 'error');
   const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-  const res = await fetch(endpoint, {
+  const data = await fetchJson(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: Number(select.value), quantity: qty }),
-  });
-  const data = await res.json();
+  }, 'Trade failed');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast(data.message || 'Trade placed');
   qtyInput.value = '';
@@ -501,12 +531,12 @@ async function openShort() {
   const qty = Number(document.getElementById('shortQty').value);
   const duration = Number(document.getElementById('shortDuration').value);
   if (!stockId || !qty || !duration) return showToast('Pick a stock, quantity, and duration', 'error');
-  const res = await fetch('/api/trades_short_open.php', {
+  const data = await fetchJson('/api/trades_short_open.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: stockId, quantity: qty, duration_seconds: duration }),
-  });
-  const data = await res.json();
+  }, 'Failed to open short');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Short opened');
   document.getElementById('shortQty').value = '';
@@ -518,6 +548,13 @@ function connectSocket() {
   if (!state.user?.institution_id) {
     console.warn('No institution_id, skipping WebSocket connection');
     return;
+  }
+  if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
+    try {
+      state.ws.close();
+    } catch (err) {
+      console.warn('Error closing previous socket', err);
+    }
   }
   const url = new URL(state.config.wsPublicUrl);
   url.searchParams.set('institution_id', state.user.institution_id);
@@ -591,12 +628,12 @@ async function createStock() {
   const name = document.getElementById('newName').value.trim();
   const price = Number(document.getElementById('newPrice').value);
   if (!ticker || !name || price <= 0) return showToast('Provide ticker, name, and price', 'error');
-  const res = await fetch('/api/manager_stocks.php', {
+  const data = await fetchJson('/api/manager_stocks.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ticker, name, initial_price: price }),
-  });
-  const data = await res.json();
+  }, 'Failed to create stock');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Stock created');
   document.getElementById('newTicker').value = '';
@@ -611,8 +648,8 @@ function confirmDeleteStock(id, ticker) {
     body: `<p>This will deactivate ${escapeHtml(ticker)} for trading.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_stocks.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_stocks.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete stock');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Stock removed');
       await Promise.all([refreshStocks(), loadManagerStocks()]);
@@ -630,8 +667,8 @@ async function handlePriceSearch(e) {
       renderPriceUpdater();
       return;
     }
-    const res = await fetch(`/api/manager_stocks_search.php?q=${encodeURIComponent(term)}`);
-    const data = await res.json();
+    const data = await fetchJson(`/api/manager_stocks_search.php?q=${encodeURIComponent(term)}`, {}, 'Price search failed');
+    if (!data) return;
     state.managerData.priceOptions = data.stocks || [];
     renderPriceUpdater();
   }, 200);
@@ -642,9 +679,8 @@ async function showPriceDetails(id) {
     document.getElementById('priceDetails').textContent = '';
     return;
   }
-  const res = await fetch(`/api/manager_price.php?stock_id=${id}`);
-  const data = await res.json();
-  if (data.error) return showToast(data.error, 'error');
+  const data = await fetchJson(`/api/manager_price.php?stock_id=${id}`, {}, 'Failed to load price');
+  if (!data || data.error) return data ? showToast(data.error, 'error') : null;
   const stock = data.stock;
   document.getElementById('priceDetails').textContent = `${stock.ticker} ${stock.name} — Current ${formatCurrency(stock.current_price || 0)}`;
 }
@@ -653,12 +689,12 @@ async function updatePrice() {
   const stockId = Number(document.getElementById('priceSelect').value);
   const price = Number(document.getElementById('newPriceValue').value);
   if (!stockId || price <= 0) return showToast('Choose a stock and a valid price', 'error');
-  const res = await fetch('/api/manager_price.php', {
+  const data = await fetchJson('/api/manager_price.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: stockId, price }),
-  });
-  const data = await res.json();
+  }, 'Failed to update price');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Price updated');
   document.getElementById('newPriceValue').value = '';
@@ -686,12 +722,12 @@ async function createScenario() {
     ends_at: document.getElementById('scenarioEnd').value || null,
   };
   if (!payload.title) return showToast('Scenario title required', 'error');
-  const res = await fetch('/api/manager_crisis.php', {
+  const data = await fetchJson('/api/manager_crisis.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  });
-  const data = await res.json();
+  }, 'Failed to save scenario');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Scenario saved');
   await Promise.all([loadManagerScenarios(), refreshScenarios()]);
@@ -699,7 +735,7 @@ async function createScenario() {
 
 async function toggleScenarioStatus(scenario) {
   const next = scenario.status === 'published' ? 'draft' : 'published';
-  const res = await fetch(`/api/manager_crisis.php?id=${scenario.id}`, {
+  const data = await fetchJson(`/api/manager_crisis.php?id=${scenario.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -709,8 +745,8 @@ async function toggleScenarioStatus(scenario) {
       starts_at: scenario.starts_at,
       ends_at: scenario.ends_at,
     }),
-  });
-  const data = await res.json();
+  }, 'Failed to update scenario');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   await Promise.all([loadManagerScenarios(), refreshScenarios()]);
 }
@@ -721,8 +757,8 @@ function confirmDeleteScenario(id, title) {
     body: `<p>Are you sure you want to delete ${escapeHtml(title)}? This cannot be undone.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_crisis.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_crisis.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete scenario');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Scenario deleted');
       await Promise.all([loadManagerScenarios(), refreshScenarios()]);
@@ -746,12 +782,12 @@ async function createParticipant() {
   const username = document.getElementById('participantUsername').value.trim();
   const email = document.getElementById('participantEmail').value.trim();
   if (!username && !email) return showToast('Enter a username or email', 'error');
-  const res = await fetch('/api/manager_participants.php', {
+  const data = await fetchJson('/api/manager_participants.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email }),
-  });
-  const data = await res.json();
+  }, 'Failed to create participant');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   const modal = openModal({
     title: 'Participant created',
@@ -786,8 +822,8 @@ function confirmDeleteParticipant(id, label) {
     body: `<p>Delete ${escapeHtml(label)}? This will remove their portfolio data.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_participants.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_participants.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete participant');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Participant removed');
       await loadParticipants();
