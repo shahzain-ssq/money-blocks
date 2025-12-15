@@ -105,8 +105,9 @@ document.getElementById('stockForm').addEventListener('submit', async (e) => {
   const payload = Object.fromEntries(form.entries());
   try {
     const res = await fetch('/api/manager_stocks.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) {
-      alert('Failed to add stock');
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to add stock');
       return;
     }
     loadStocks();
@@ -122,8 +123,9 @@ document.getElementById('priceForm').addEventListener('submit', async (e) => {
   const payload = Object.fromEntries(form.entries());
   try {
     const res = await fetch('/api/manager_price.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) {
-      alert('Failed to update price');
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to update price');
       return;
     }
     loadStocks();
@@ -139,8 +141,9 @@ document.getElementById('crisisForm').addEventListener('submit', async (e) => {
   const payload = Object.fromEntries(form.entries());
   try {
     const res = await fetch('/api/manager_crisis.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) {
-      alert('Failed to save scenario');
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to save scenario');
       return;
     }
     loadCrisis();

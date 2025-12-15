@@ -134,7 +134,7 @@ async function trade(stockId, type) {
     }
     const data = await res.json();
     alert(data.message || 'Trade executed successfully');
-    init();
+    debouncedInit();
   } catch (err) {
     console.error('Trade failed:', err);
     alert('Trade failed. Please try again.');

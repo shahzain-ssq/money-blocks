@@ -206,6 +206,7 @@ async function refreshManagerData() {
 function renderPortfolio() {
   if (!state.portfolio) return;
   const summary = document.getElementById('portfolioSummary');
+  if (!summary) return;
   summary.innerHTML = '';
   const stats = [
     { label: 'Cash', value: formatCurrency(state.portfolio.portfolio.cash_balance || 0) },
@@ -225,9 +226,13 @@ function renderPortfolio() {
     card.append(label, val);
     summary.appendChild(card);
   });
-  document.getElementById('portfolioValuation').textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  const valuation = document.getElementById('portfolioValuation');
+  if (valuation) {
+    valuation.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  }
 
   const tbody = document.querySelector('#positionsTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.portfolio.positions || []).forEach((p) => {
     const tr = document.createElement('tr');
@@ -265,19 +270,22 @@ function renderPortfolio() {
   tbody.querySelectorAll('button').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;
-      document.getElementById('tradeSelect').value = id;
+      const tradeSelect = document.getElementById('tradeSelect');
+      if (tradeSelect) tradeSelect.value = id;
       window.location.hash = '#/trade';
       renderTrade();
-      if (btn.dataset.action === 'buy') document.getElementById('buyQty').focus();
-      if (btn.dataset.action === 'sell') document.getElementById('sellQty').focus();
+      if (btn.dataset.action === 'buy') document.getElementById('buyQty')?.focus();
+      if (btn.dataset.action === 'sell') document.getElementById('sellQty')?.focus();
     });
   });
 }
 
 function renderLivePrices() {
   const tbody = document.querySelector('#liveTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
-  const q = document.getElementById('liveSearch').value?.toLowerCase() || '';
+  const search = document.getElementById('liveSearch');
+  const q = search?.value?.toLowerCase() || '';
   const filtered = state.stocks.filter((s) => `${s.ticker} ${s.name}`.toLowerCase().includes(q));
   filtered.forEach((s) => {
     const change = Number(s.change || 0);
@@ -396,6 +404,8 @@ function renderTrade() {
 
 function renderShorts() {
   const select = document.getElementById('shortSelect');
+  const tbody = document.querySelector('#shortsTable tbody');
+  if (!select || !tbody) return;
   select.innerHTML = '';
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
@@ -407,7 +417,6 @@ function renderShorts() {
     opt.textContent = s.ticker;
     select.appendChild(opt);
   });
-  const tbody = document.querySelector('#shortsTable tbody');
   tbody.innerHTML = '';
   (state.portfolio?.shorts || []).forEach((sh) => {
     const tr = document.createElement('tr');
@@ -435,6 +444,7 @@ function renderShorts() {
 
 function renderScenarios() {
   const list = document.getElementById('scenarioList');
+  if (!list) return;
   list.innerHTML = '';
   if (!state.scenarios.length) {
     list.innerHTML = '<div class="card">No crisis scenarios yet.</div>';
@@ -485,22 +495,33 @@ function isActive(start, end) {
 }
 
 function bindForms() {
-  document.getElementById('liveSearch').addEventListener('input', renderLivePrices);
-  document.getElementById('tradeSelect').addEventListener('change', renderTrade);
-  document.getElementById('tradeSearch').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term) || s.name.toLowerCase().includes(term));
-    if (match) document.getElementById('tradeSelect').value = match.id;
-    renderTrade();
-  });
-  document.getElementById('buyBtn').onclick = () => handleTrade('buy');
-  document.getElementById('sellBtn').onclick = () => handleTrade('sell');
-  document.getElementById('shortOpenBtn').onclick = openShort;
-  document.getElementById('shortSearch').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term));
-    if (match) document.getElementById('shortSelect').value = match.id;
-  });
+  const liveSearch = document.getElementById('liveSearch');
+  if (liveSearch) liveSearch.addEventListener('input', renderLivePrices);
+  const tradeSelect = document.getElementById('tradeSelect');
+  if (tradeSelect) tradeSelect.addEventListener('change', renderTrade);
+  const tradeSearch = document.getElementById('tradeSearch');
+  if (tradeSearch) {
+    tradeSearch.addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term) || s.name.toLowerCase().includes(term));
+      if (match) document.getElementById('tradeSelect').value = match.id;
+      renderTrade();
+    });
+  }
+  const buyBtn = document.getElementById('buyBtn');
+  if (buyBtn) buyBtn.onclick = () => handleTrade('buy');
+  const sellBtn = document.getElementById('sellBtn');
+  if (sellBtn) sellBtn.onclick = () => handleTrade('sell');
+  const shortOpenBtn = document.getElementById('shortOpenBtn');
+  if (shortOpenBtn) shortOpenBtn.onclick = openShort;
+  const shortSearch = document.getElementById('shortSearch');
+  if (shortSearch) {
+    shortSearch.addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term));
+      if (match) document.getElementById('shortSelect').value = match.id;
+    });
+  }
   const createStockBtn = document.getElementById('createStockBtn');
   if (createStockBtn) createStockBtn.onclick = createStock;
   const updatePriceBtn = document.getElementById('updatePriceBtn');
@@ -515,17 +536,22 @@ function bindForms() {
   if (participantSearch) participantSearch.addEventListener('input', (e) => loadParticipants(e.target.value));
   const createParticipantBtn = document.getElementById('createParticipantBtn');
   if (createParticipantBtn) createParticipantBtn.onclick = createParticipant;
-  document.getElementById('logoutBtn').onclick = async () => {
-    await fetch('/api/auth_login.php', { method: 'DELETE' });
-    window.location = '/index.html';
-  };
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
+      await fetch('/api/auth_login.php', { method: 'DELETE' });
+      window.location = '/index.html';
+    };
+  }
 }
 
 async function handleTrade(type) {
   const select = document.getElementById('tradeSelect');
   const qtyInput = type === 'buy' ? document.getElementById('buyQty') : document.getElementById('sellQty');
   const qty = Number(qtyInput.value);
-  if (!select.value || qty <= 0) return showToast('Select a stock and enter quantity', 'error');
+  if (!select.value || !Number.isFinite(qty) || qty <= 0) {
+    return showToast('Select a stock and enter a valid quantity', 'error');
+  }
   const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
   const data = await fetchJson(endpoint, {
     method: 'POST',
@@ -543,7 +569,9 @@ async function openShort() {
   const stockId = Number(document.getElementById('shortSelect').value);
   const qty = Number(document.getElementById('shortQty').value);
   const duration = Number(document.getElementById('shortDuration').value);
-  if (!stockId || qty <= 0 || duration <= 0) return showToast('Pick a stock, quantity, and duration', 'error');
+  if (!stockId || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    return showToast('Pick a stock, quantity, and duration', 'error');
+  }
   const data = await fetchJson('/api/trades_short_open.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -641,7 +669,9 @@ async function createStock() {
   const ticker = document.getElementById('newTicker').value.trim();
   const name = document.getElementById('newName').value.trim();
   const price = Number(document.getElementById('newPrice').value);
-  if (!ticker || !name || price <= 0) return showToast('Provide ticker, name, and price', 'error');
+  if (!ticker || !name || !Number.isFinite(price) || price <= 0) {
+    return showToast('Provide ticker, name, and price', 'error');
+  }
   const data = await fetchJson('/api/manager_stocks.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -718,7 +748,9 @@ async function showPriceDetails(id) {
 async function updatePrice() {
   const stockId = Number(document.getElementById('priceSelect').value);
   const price = Number(document.getElementById('newPriceValue').value);
-  if (!stockId || price <= 0) return showToast('Choose a stock and a valid price', 'error');
+  if (!stockId || !Number.isFinite(price) || price <= 0) {
+    return showToast('Choose a stock and a valid price', 'error');
+  }
   const data = await fetchJson('/api/manager_price.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
