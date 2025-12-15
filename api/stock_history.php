@@ -12,7 +12,7 @@ if ($stockId <= 0) {
 }
 try {
     $prices = StockService::history($stockId, (int)$user['institution_id'], $limit > 0 ? $limit : 30);
-    jsonResponse(['prices' => $prices]);
+    jsonResponse(['ok' => true, 'prices' => $prices]);
 } catch (RuntimeException $e) {
     jsonResponse(['error' => 'not_found'], 404);
 }
