@@ -29,6 +29,16 @@ for origin in os.environ.get("WS_ALLOWED_ORIGINS", "").split(","):
     if normalized_origin:
         ALLOWED_ORIGINS.add(normalized_origin)
 
+if not ALLOWED_ORIGINS:
+    print(
+        json.dumps(
+            {
+                "event": "origin_allow_all_warning",
+                "message": "WS_ALLOWED_ORIGINS not set; accepting all origins",
+            }
+        )
+    )
+
 
 async def register(ws, institution_id: int):
     connections.setdefault(institution_id, set()).add(ws)
@@ -73,7 +83,7 @@ async def handler(ws, path):
         institution_raw = query_params.get("institution_id", [None])[0]
         institution_id = int(institution_raw)
         if institution_id <= 0:
-            raise ValueError
+            raise ValueError("institution_id must be positive")
     except (TypeError, ValueError):
         await ws.close(code=1008, reason="Missing or invalid institution_id")
         return
@@ -181,7 +191,10 @@ async def admin_broadcast(request):
 
 
 async def healthcheck(_request):
-    return web.json_response({"ok": True})
+    total_connections = sum(len(sockets) for sockets in connections.values())
+    return web.json_response(
+        {"ok": True, "connections": total_connections, "institutions": len(connections)}
+    )
 
 
 async def prune_connections():
