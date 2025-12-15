@@ -58,7 +58,11 @@ async function loadConfig() {
 function setConnectionStatus(connected) {
   const badge = document.getElementById('connectionBadge');
   if (!badge) return;
-  badge.innerHTML = `<span class="status-dot ${connected ? 'online' : 'offline'}"></span>${connected ? 'Live' : 'Disconnected'}`;
+  badge.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = `status-dot ${connected ? 'online' : 'offline'}`;
+  badge.appendChild(dot);
+  badge.appendChild(document.createTextNode(connected ? 'Live' : 'Disconnected'));
 }
 
 function applyUser() {
@@ -334,8 +338,8 @@ async function openStockDetail(stock) {
     console.error('Failed to load stock history', err);
     showToast('Unable to load stock history', 'error');
   }
-  const minP = Math.min(...prices, 0);
-  const maxP = Math.max(...prices, 1);
+  const minP = prices.length ? Math.min(...prices) : 0;
+  const maxP = prices.length ? Math.max(...prices) : 1;
   const range = maxP - minP || 1;
   const bars = prices.length
     ? prices.map((price) => {
@@ -652,7 +656,21 @@ function connectSocket() {
   state.ws.onclose = () => {
     setConnectionStatus(false);
     state.ws = null;
-    setTimeout(connectSocket, state.reconnectDelay);
+    setTimeout(async () => {
+      try {
+        const meRes = await fetch('/api/auth_me.php');
+        if (meRes.ok) {
+          const me = await meRes.json();
+          if (me.user) {
+            connectSocket();
+            return;
+          }
+        }
+        console.warn('User not authenticated, stopping WebSocket reconnection');
+      } catch (err) {
+        console.warn('Auth check failed, stopping reconnection', err);
+      }
+    }, state.reconnectDelay);
     state.reconnectDelay = Math.min(10000, state.reconnectDelay * 2);
   };
   state.ws.onerror = (err) => console.warn('WebSocket error', err);

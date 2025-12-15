@@ -196,6 +196,8 @@ async function connectSocket(institutionId, wsPublicUrl) {
           if (me && me.user && cfg?.wsPublicUrl) {
             connectSocket(me.user.institution_id, cfg.wsPublicUrl);
             reconnectDelay = Math.min(10000, reconnectDelay * 2);
+          } else {
+            console.warn('User not authenticated, stopping WebSocket reconnection');
           }
         })
         .catch((err) => console.warn('WebSocket reconnect failed', err));

@@ -102,58 +102,67 @@ async function loadParticipants() {
   }
 }
 
-document.getElementById('stockForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  const payload = Object.fromEntries(form.entries());
-  try {
-    const res = await fetch('/api/manager_stocks.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      alert(data.error || 'Failed to add stock');
-      return;
+const stockForm = document.getElementById('stockForm');
+if (stockForm) {
+  stockForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const res = await fetch('/api/manager_stocks.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(data.error || 'Failed to add stock');
+        return;
+      }
+      loadStocks();
+    } catch (err) {
+      console.error('Stock creation failed:', err);
+      alert('Failed to add stock');
     }
-    loadStocks();
-  } catch (err) {
-    console.error('Stock creation failed:', err);
-    alert('Failed to add stock');
-  }
-});
+  });
+}
 
-document.getElementById('priceForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  const payload = Object.fromEntries(form.entries());
-  try {
-    const res = await fetch('/api/manager_price.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      alert(data.error || 'Failed to update price');
-      return;
+const priceForm = document.getElementById('priceForm');
+if (priceForm) {
+  priceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const res = await fetch('/api/manager_price.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(data.error || 'Failed to update price');
+        return;
+      }
+      loadStocks();
+    } catch (err) {
+      console.error('Price update failed:', err);
+      alert('Failed to update price');
     }
-    loadStocks();
-  } catch (err) {
-    console.error('Price update failed:', err);
-    alert('Failed to update price');
-  }
-});
+  });
+}
 
-document.getElementById('crisisForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = new FormData(e.target);
-  const payload = Object.fromEntries(form.entries());
-  try {
-    const res = await fetch('/api/manager_crisis.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      alert(data.error || 'Failed to save scenario');
-      return;
+const crisisForm = document.getElementById('crisisForm');
+if (crisisForm) {
+  crisisForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const res = await fetch('/api/manager_crisis.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(data.error || 'Failed to save scenario');
+        return;
+      }
+      loadCrisis();
+    } catch (err) {
+      console.error('Crisis scenario save failed:', err);
+      alert('Failed to save scenario');
     }
-    loadCrisis();
-  } catch (err) {
-    console.error('Crisis scenario save failed:', err);
-    alert('Failed to save scenario');
-  }
-});
+  });
+}
 
 initManager();
