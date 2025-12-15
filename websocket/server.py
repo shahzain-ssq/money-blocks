@@ -3,7 +3,8 @@ import asyncio
 import hmac
 import json
 import os
-from typing import Dict, Set
+import signal
+from typing import Dict, Optional, Set
 from urllib.parse import parse_qs, urlparse
 
 import websockets
@@ -60,17 +61,16 @@ async def unregister(ws, institution_id: int):
     )
 
 
-def _normalize_origin(origin: str):
+def _normalize_origin(origin: Optional[str]) -> Optional[str]:
     return origin.rstrip("/") if origin else origin
 
 
 async def handler(ws, path):
     origin = ws.request_headers.get("Origin")
-    if ALLOWED_ORIGINS:
-        normalized_origin = _normalize_origin(origin)
-        if not normalized_origin or normalized_origin not in ALLOWED_ORIGINS:
-            await ws.close(code=1008, reason="origin not allowed")
-            return
+    normalized_origin = _normalize_origin(origin)
+    if not normalized_origin or normalized_origin not in ALLOWED_ORIGINS:
+        await ws.close(code=1008, reason="origin not allowed")
+        return
 
     parsed = urlparse(path or "")
     query_params = parse_qs(parsed.query)
@@ -85,6 +85,7 @@ async def handler(ws, path):
 
     await register(ws, institution_id)
     try:
+        # Discard any client messages; this server only broadcasts
         async for _ in ws:
             pass
     finally:
@@ -231,8 +232,17 @@ async def start_servers():
         "WebSocket listening on "
         f"{WS_SERVER_HOST}:{WS_SERVER_PORT}, admin HTTP on {ADMIN_PORT}"
     )
+
+    stop_event = asyncio.Event()
+
+    def signal_handler():
+        stop_event.set()
+
+    loop.add_signal_handler(signal.SIGTERM, signal_handler)
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
+
     try:
-        await ws_server.wait_closed()
+        await stop_event.wait()
     finally:
         ws_server.close()
         await ws_server.wait_closed()
