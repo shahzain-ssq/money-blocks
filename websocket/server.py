@@ -1,96 +1,278 @@
+#!/usr/bin/env python3
 """Lightweight WebSocket broadcaster for institution-scoped events."""
 import asyncio
+import hmac
 import json
 import os
-from typing import Dict, Set
+import signal
+import sys
+from typing import Dict, Optional, Set
+from urllib.parse import parse_qs, urlparse
 
 import websockets
 from aiohttp import web
 
+EXPECTED_PYTHON = (3, 11, 13)
+
+
+def _enforce_python_version() -> None:
+    current_version = sys.version_info[:3]
+    print(
+        json.dumps(
+            {
+                "event": "python_runtime",
+                "detected": ".".join(map(str, current_version)),
+                "expected": ".".join(map(str, EXPECTED_PYTHON)),
+            }
+        )
+    )
+    if current_version != EXPECTED_PYTHON:
+        sys.exit(
+            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]}.{EXPECTED_PYTHON[2]} required; "
+            f"found {current_version[0]}.{current_version[1]}.{current_version[2]}"
+        )
+
+
+_enforce_python_version()
+
 connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
-# Align token name with PHP broadcaster (WS_ADMIN_TOKEN) while still
-# accepting ADMIN_TOKEN for backward compatibility.
+
 ADMIN_TOKEN = (
-    os.environ.get("ADMIN_TOKEN")
-    or os.environ.get("WS_ADMIN_TOKEN")
-    or "change-me"
+    os.environ.get("WS_ADMIN_TOKEN")
+    if "WS_ADMIN_TOKEN" in os.environ
+    else os.environ.get("ADMIN_TOKEN")
 )
+if not ADMIN_TOKEN:
+    raise RuntimeError(
+        "WS_ADMIN_TOKEN (or ADMIN_TOKEN) environment variable must be set for admin endpoints"
+    )
+
 WS_SERVER_HOST = os.environ.get("WS_SERVER_HOST", "127.0.0.1")
 WS_SERVER_PORT = int(os.environ.get("WS_SERVER_PORT", "8787"))
 ADMIN_PORT = int(os.environ.get("WS_ADMIN_PORT", "8766"))
-ALLOWED_ORIGINS = {
-    origin.strip()
-    for origin in os.environ.get("WS_ALLOWED_ORIGINS", "").split(",")
-    if origin.strip()
-}
+PRUNE_INTERVAL = 30
+MAX_ADMIN_BYTES = 65536
+
+ALLOWED_ORIGINS = set()
+for origin in os.environ.get("WS_ALLOWED_ORIGINS", "").split(","):
+    normalized_origin = origin.strip().rstrip("/")
+    if normalized_origin:
+        ALLOWED_ORIGINS.add(normalized_origin)
+
+if not ALLOWED_ORIGINS:
+    raise RuntimeError(
+        "WS_ALLOWED_ORIGINS environment variable must be set for production security"
+    )
 
 
 async def register(ws, institution_id: int):
     connections.setdefault(institution_id, set()).add(ws)
+    print(
+        json.dumps(
+            {"event": "connected", "institution_id": institution_id, "remote": str(ws.remote_address)}
+        )
+    )
 
 
 async def unregister(ws, institution_id: int):
     if institution_id in connections:
         connections[institution_id].discard(ws)
         if not connections[institution_id]:
-            connections.pop(institution_id)
+            connections.pop(institution_id, None)
+    print(
+        json.dumps(
+            {
+                "event": "disconnected",
+                "institution_id": institution_id,
+                "remote": str(ws.remote_address),
+            }
+        )
+    )
 
 
-async def handler(ws, _path):
+def _normalize_origin(origin: Optional[str]) -> Optional[str]:
+    return origin.rstrip("/") if origin else origin
+
+
+async def handler(ws):
     origin = ws.request_headers.get("Origin")
-    if ALLOWED_ORIGINS and origin and origin.rstrip("/") not in ALLOWED_ORIGINS:
+    normalized_origin = _normalize_origin(origin)
+    if not normalized_origin or normalized_origin not in ALLOWED_ORIGINS:
         await ws.close(code=1008, reason="origin not allowed")
         return
-    query = ws.path.split('?', 1)[1] if '?' in ws.path else ''
-    params = dict(part.split('=') for part in query.split('&') if '=' in part)
+
+    parsed = urlparse(ws.path or "")
+    query_params = parse_qs(parsed.query)
     try:
-        institution_id = int(params.get('institution_id', 0))
+        institution_raw = query_params.get("institution_id", [None])[0]
+        institution_id = int(institution_raw)
         if institution_id <= 0:
-            raise ValueError("Invalid institution_id")
-    except (ValueError, KeyError):
+            raise ValueError("institution_id must be positive")
+    except (TypeError, ValueError):
         await ws.close(code=1008, reason="Missing or invalid institution_id")
         return
+
     await register(ws, institution_id)
     try:
+        # Discard any client messages; this server only broadcasts
         async for _ in ws:
             pass
     finally:
         await unregister(ws, institution_id)
 
 
-async def broadcast(message: dict):
-    institution_id = message.get('institution_id')
-    payload = json.dumps(message)
-    for ws in list(connections.get(institution_id, [])):
+async def _safe_send(ws, payload: str, institution_id: int):
+    try:
         await ws.send(payload)
+        return True
+    except Exception as exc:  # broad on purpose for robustness
+        print(
+            json.dumps(
+                {
+                    "event": "send_error",
+                    "institution_id": institution_id,
+                    "remote": str(ws.remote_address),
+                    "error": str(exc),
+                }
+            )
+        )
+        return False
+
+
+async def broadcast(message: dict):
+    institution_id = message.get("institution_id")
+    if not isinstance(institution_id, int) or institution_id <= 0:
+        return 0
+
+    try:
+        payload = json.dumps(message, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        print(json.dumps({"event": "encode_error", "error": str(exc)}))
+        return 0
+    recipients = list(connections.get(institution_id, set()))
+    if not recipients:
+        return 0
+
+    results = await asyncio.gather(
+        *(_safe_send(ws, payload, institution_id) for ws in recipients),
+        return_exceptions=True,
+    )
+
+    delivered = 0
+    for ws, result in zip(recipients, results, strict=True):
+        if result is True:
+            delivered += 1
+            continue
+        await unregister(ws, institution_id)
+
+    return delivered
 
 
 async def admin_broadcast(request):
-    if not ADMIN_TOKEN:
-        raise RuntimeError("ADMIN_TOKEN environment variable must be set for admin endpoints")
-    if request.headers.get('X-WS-TOKEN') != ADMIN_TOKEN:
-        return web.Response(status=401, text='unauthorized')
-    data = await request.json()
-    await broadcast(data)
-    return web.json_response({'delivered_to': len(connections.get(data.get('institution_id'), []))})
+    header_token = request.headers.get("X-WS-TOKEN", "")
+    if not (header_token and hmac.compare_digest(str(header_token), str(ADMIN_TOKEN))):
+        print(json.dumps({"event": "admin_auth_failed", "remote": request.remote}))
+        return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
+
+    if request.content_length and request.content_length > MAX_ADMIN_BYTES:
+        return web.json_response({"ok": False, "error": "payload too large"}, status=413)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid json"}, status=400)
+
+    if not isinstance(data, dict):
+        return web.json_response({"ok": False, "error": "invalid payload"}, status=400)
+
+    institution_id = data.get("institution_id")
+    if not isinstance(institution_id, int) or institution_id <= 0:
+        return web.json_response({"ok": False, "error": "invalid institution_id"}, status=400)
+
+    delivered = await broadcast(data)
+    print(
+        json.dumps(
+            {
+                "event": "admin_broadcast",
+                "institution_id": institution_id,
+                "delivered_to": delivered,
+                "remote": request.remote,
+            }
+        )
+    )
+
+    return web.json_response({"ok": True, "delivered_to": delivered})
+
+
+async def healthcheck(_request):
+    total_connections = sum(len(sockets) for sockets in connections.values())
+    return web.json_response(
+        {"ok": True, "connections": total_connections, "institutions": len(connections)}
+    )
+
+
+async def prune_connections():
+    while True:
+        await asyncio.sleep(PRUNE_INTERVAL)
+        for institution_id, sockets in list(connections.items()):
+            for ws in list(sockets):
+                if ws.closed:
+                    print(
+                        json.dumps(
+                            {
+                                "event": "prune",
+                                "institution_id": institution_id,
+                                "remote": str(ws.remote_address),
+                            }
+                        )
+                    )
+                    await unregister(ws, institution_id)
 
 
 async def start_servers():
     ws_server = await websockets.serve(
-        handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=None
+        handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=20
     )
+
     app = web.Application()
-    app.router.add_post('/admin/broadcast', admin_broadcast)
+    app.router.add_get("/health", healthcheck)
+    app.router.add_post("/admin/broadcast", admin_broadcast)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, WS_SERVER_HOST, ADMIN_PORT)
     await site.start()
+
+    loop = asyncio.get_running_loop()
+    prune_task = asyncio.create_task(prune_connections())
+
     print(
         "WebSocket listening on "
         f"{WS_SERVER_HOST}:{WS_SERVER_PORT}, admin HTTP on {ADMIN_PORT}"
     )
-    await ws_server.wait_closed()
+
+    stop_event = asyncio.Event()
+
+    def signal_handler():
+        stop_event.set()
+
+    try:
+        loop.add_signal_handler(signal.SIGTERM, signal_handler)
+        loop.add_signal_handler(signal.SIGINT, signal_handler)
+    except NotImplementedError:
+        pass
+
+    try:
+        await stop_event.wait()
+    finally:
+        ws_server.close()
+        await ws_server.wait_closed()
+        await runner.cleanup()
+        prune_task.cancel()
+        try:
+            await prune_task
+        except asyncio.CancelledError:
+            pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(start_servers())
