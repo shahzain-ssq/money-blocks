@@ -18,8 +18,10 @@
             <button class="btn" id="googleBtn" disabled>Login with Google</button>
           </div>
           <form id="loginForm" style="margin-top:1rem; display:grid; gap:0.75rem;">
-            <label>Username or Email<input type="text" name="identifier" class="input" required /></label>
-            <label>Password<input type="password" name="password" class="input" required /></label>
+            <label for="identifier">Username or Email</label>
+            <input type="text" name="identifier" id="identifier" class="input" required />
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" class="input" required />
             <button class="btn" type="submit">Login</button>
           </form>
           <p id="status" class="muted"></p>

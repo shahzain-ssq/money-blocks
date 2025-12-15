@@ -29,24 +29,41 @@ export function openModal({ title, body, confirmText = 'Confirm', cancelText = '
   modalBackdrop.innerHTML = '';
   const modal = document.createElement('div');
   modal.className = 'modal';
-  modal.innerHTML = `
-    <header><h3>${title}</h3><button class="btn ghost inline" aria-label="Close">✕</button></header>
-    <div>${body}</div>
-    <footer>
-      <button class="btn secondary" data-role="cancel">${cancelText}</button>
-      <button class="btn danger" data-role="confirm">${confirmText}</button>
-    </footer>
-  `;
+  const header = document.createElement('header');
+  const titleEl = document.createElement('h3');
+  titleEl.textContent = title;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn ghost inline';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '✕';
+  header.append(titleEl, closeBtn);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.innerHTML = body;
+
+  const footer = document.createElement('footer');
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn secondary';
+  cancelBtn.dataset.role = 'cancel';
+  cancelBtn.textContent = cancelText;
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn danger';
+  confirmBtn.dataset.role = 'confirm';
+  confirmBtn.textContent = confirmText;
+  footer.append(cancelBtn, confirmBtn);
+
+  modal.append(header, bodyEl, footer);
   modalBackdrop.appendChild(modal);
   modalBackdrop.style.display = 'flex';
   const close = () => { modalBackdrop.style.display = 'none'; };
-  modal.querySelector('[aria-label="Close"]').onclick = close;
-  modal.querySelector('[data-role="cancel"]').onclick = close;
-  modal.querySelector('[data-role="confirm"]').onclick = async () => {
+  closeBtn.onclick = close;
+  cancelBtn.onclick = close;
+  confirmBtn.onclick = async () => {
     if (onConfirm) await onConfirm();
     close();
   };
-  modalBackdrop.addEventListener('click', (e) => { if (dismissible && e.target === modalBackdrop) close(); });
+  const backdropHandler = (e) => { if (dismissible && e.target === modalBackdrop) close(); };
+  modalBackdrop.addEventListener('click', backdropHandler, { once: true });
   return modal;
 }
 

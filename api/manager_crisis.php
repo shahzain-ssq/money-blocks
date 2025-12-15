@@ -11,17 +11,6 @@ requireManager($user);
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = Database::getConnection();
 
-function validateTimeRange($startsAt, $endsAt)
-{
-    if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
-        $startTimestamp = strtotime($startsAt);
-        $endTimestamp = strtotime($endsAt);
-        if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
-            jsonResponse(['error' => 'invalid_time_range'], 422);
-        }
-    }
-}
-
 if ($method === 'GET') {
     jsonResponse(['ok' => true, 'scenarios' => CrisisService::managerList((int)$user['institution_id'])]);
 }

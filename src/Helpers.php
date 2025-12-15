@@ -28,3 +28,14 @@ function requireManager(array $user): void
         jsonResponse(['error' => 'forbidden'], 403);
     }
 }
+
+function validateTimeRange($startsAt, $endsAt): void
+{
+    if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
+        $startTimestamp = strtotime($startsAt);
+        $endTimestamp = strtotime($endsAt);
+        if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
+            jsonResponse(['error' => 'invalid_time_range'], 422);
+        }
+    }
+}

@@ -57,18 +57,21 @@ if ($method === 'PUT') {
     if ($ticker === '' || $name === '' || $initialPrice <= 0) {
         jsonResponse(['error' => 'invalid_input'], 422);
     }
-    $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?')
-        ->execute([
-            $ticker,
-            $name,
-            $initialPrice,
-            $input['total_limit'] ?? null,
-            $input['per_user_limit'] ?? null,
-            $input['per_user_short_limit'] ?? null,
-            isset($input['active']) ? (int)$input['active'] : 1,
-            $id,
-            $user['institution_id'],
-        ]);
+    $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+    $update->execute([
+        $ticker,
+        $name,
+        $initialPrice,
+        $input['total_limit'] ?? null,
+        $input['per_user_limit'] ?? null,
+        $input['per_user_short_limit'] ?? null,
+        isset($input['active']) ? (int)$input['active'] : 1,
+        $id,
+        $user['institution_id'],
+    ]);
+    if ($update->rowCount() === 0) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
     jsonResponse(['ok' => true]);
 }
 

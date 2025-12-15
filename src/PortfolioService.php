@@ -3,6 +3,11 @@ require_once __DIR__ . '/Database.php';
 
 class PortfolioService
 {
+    private static function getCurrentPriceSubquery(): string
+    {
+        return '(SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1)';
+    }
+
     public static function getUserPortfolio(int $userId, int $institutionId): array
     {
         $pdo = Database::getConnection();
@@ -13,9 +18,10 @@ class PortfolioService
             $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, NOW(), NOW())')->execute([$userId]);
             $portfolio = ['id' => $pdo->lastInsertId(), 'user_id' => $userId, 'cash_balance' => 100000];
         }
-        $positionsStmt = $pdo->prepare('SELECT p.*, s.ticker, s.name,
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price
-            FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?');
+        $priceSubquery = self::getCurrentPriceSubquery();
+        $positionsStmt = $pdo->prepare("SELECT p.*, s.ticker, s.name,
+                $priceSubquery AS current_price
+            FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?");
         $positionsStmt->execute([$institutionId, $portfolio['id']]);
         $positions = $positionsStmt->fetchAll();
         $portfolioValue = 0;
@@ -28,9 +34,9 @@ class PortfolioService
             $unrealized += $pos['unrealized_pl'];
         }
 
-        $shortsStmt = $pdo->prepare('SELECT sp.*, s.ticker,
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price
-            FROM short_positions sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.portfolio_id = ? AND s.institution_id = ? AND sp.closed = 0');
+        $shortsStmt = $pdo->prepare("SELECT sp.*, s.ticker,
+                $priceSubquery AS current_price
+            FROM short_positions sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.portfolio_id = ? AND s.institution_id = ? AND sp.closed = 0");
         $shortsStmt->execute([$portfolio['id'], $institutionId]);
         $shorts = $shortsStmt->fetchAll();
         foreach ($shorts as &$sh) {
@@ -45,6 +51,7 @@ class PortfolioService
             'totals' => [
                 'portfolio_value' => $portfolioValue,
                 'unrealized' => $unrealized,
+                // TODO: track realized P&L when closing positions
                 'realized' => 0,
             ],
         ];
