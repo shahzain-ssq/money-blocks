@@ -257,13 +257,18 @@ function renderLivePrices() {
       escapeHtml(s.ticker),
       escapeHtml(s.name),
       formatCurrency(s.current_price || s.initial_price),
-      `${formatChange(change)} <span class="muted">(${pct.toFixed(2)}%)</span>`,
+      null,
       escapeHtml(s.updated_at ? new Date(s.updated_at).toLocaleTimeString() : '-'),
     ];
     tds.forEach((val, idx) => {
       const td = document.createElement('td');
       if (idx === 3) {
-        td.innerHTML = val;
+        const changeSpan = document.createElement('span');
+        changeSpan.textContent = formatChange(change);
+        const pctSpan = document.createElement('span');
+        pctSpan.className = 'muted';
+        pctSpan.textContent = ` (${pct.toFixed(2)}%)`;
+        td.append(changeSpan, pctSpan);
       } else {
         td.textContent = String(val);
         if (idx === 4) td.className = 'muted';
@@ -571,6 +576,10 @@ function connectSocket() {
 async function loadManagerStocks() {
   if (!isManager()) return;
   const res = await fetch('/api/manager_stocks.php');
+  if (!res.ok) {
+    showToast('Failed to load manager stocks', 'error');
+    return;
+  }
   const data = await res.json();
   state.managerData.stocks = data.stocks || [];
   renderManageStocks();
@@ -659,6 +668,10 @@ async function updatePrice() {
 async function loadManagerScenarios() {
   if (!isManager()) return;
   const res = await fetch('/api/manager_crisis.php');
+  if (!res.ok) {
+    showToast('Failed to load manager scenarios', 'error');
+    return;
+  }
   const data = await res.json();
   state.managerData.scenarios = data.scenarios || [];
   renderManagerScenarios();
@@ -720,6 +733,10 @@ function confirmDeleteScenario(id, title) {
 async function loadParticipants(query = '') {
   if (!isManager()) return;
   const res = await fetch(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+  if (!res.ok) {
+    showToast('Failed to load participants', 'error');
+    return;
+  }
   const data = await res.json();
   state.managerData.participants = data.participants || [];
   renderParticipants();

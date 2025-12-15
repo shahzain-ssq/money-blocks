@@ -157,6 +157,10 @@ async function connectSocket(institutionId, wsPublicUrl) {
       debouncedInit();
     }
     if (msg.type === 'crisis_published') {
+      if (!msg.title || typeof msg.title !== 'string') {
+        console.warn('Invalid crisis_published message', msg);
+        return;
+      }
       alert(`New scenario: ${msg.title}`);
       debouncedInit();
     }

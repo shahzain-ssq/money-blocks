@@ -1,10 +1,22 @@
 async function initManager() {
-  const meRes = await fetch('/api/auth_me.php');
-  const me = await meRes.json();
-  if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) return window.location = '/index.html';
-  loadStocks();
-  loadCrisis();
-  loadParticipants();
+  try {
+    const meRes = await fetch('/api/auth_me.php');
+    if (!meRes.ok) {
+      window.location = '/index.html';
+      return;
+    }
+    const me = await meRes.json();
+    if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) {
+      window.location = '/index.html';
+      return;
+    }
+    loadStocks();
+    loadCrisis();
+    loadParticipants();
+  } catch (err) {
+    console.error('Failed to initialize manager view:', err);
+    window.location = '/index.html';
+  }
 }
 
 async function loadStocks() {
@@ -64,36 +76,51 @@ document.getElementById('stockForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = new FormData(e.target);
   const payload = Object.fromEntries(form.entries());
-  const res = await fetch('/api/manager_stocks.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!res.ok) {
+  try {
+    const res = await fetch('/api/manager_stocks.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      alert('Failed to add stock');
+      return;
+    }
+    loadStocks();
+  } catch (err) {
+    console.error('Stock creation failed:', err);
     alert('Failed to add stock');
-    return;
   }
-  loadStocks();
 });
 
 document.getElementById('priceForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = new FormData(e.target);
   const payload = Object.fromEntries(form.entries());
-  const res = await fetch('/api/manager_price.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!res.ok) {
+  try {
+    const res = await fetch('/api/manager_price.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      alert('Failed to update price');
+      return;
+    }
+    loadStocks();
+  } catch (err) {
+    console.error('Price update failed:', err);
     alert('Failed to update price');
-    return;
   }
-  loadStocks();
 });
 
 document.getElementById('crisisForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = new FormData(e.target);
   const payload = Object.fromEntries(form.entries());
-  const res = await fetch('/api/manager_crisis.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!res.ok) {
+  try {
+    const res = await fetch('/api/manager_crisis.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      alert('Failed to save scenario');
+      return;
+    }
+    loadCrisis();
+  } catch (err) {
+    console.error('Crisis scenario save failed:', err);
     alert('Failed to save scenario');
-    return;
   }
-  loadCrisis();
 });
 
 initManager();

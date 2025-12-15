@@ -3,6 +3,10 @@ require_once __DIR__ . '/Database.php';
 
 class StockService
 {
+    /**
+     * Build a trusted SQL fragment for the latest price fields.
+     * Alias and column values are interpolated directly and must only be called with trusted strings.
+     */
     private static function latestPriceFragment(string $alias = 's', string $column = 'price', int $offset = 0): string
     {
         $safeOffset = max(0, $offset);
@@ -26,6 +30,7 @@ class StockService
             $stock['change'] = $change;
             $stock['change_pct'] = $prevBase ? ($change / $prevBase) * 100 : 0;
         }
+        unset($stock);
         return $stocks;
     }
 
