@@ -32,6 +32,7 @@ async function loadStocks() {
       return;
     }
     const container = document.getElementById('managerStocks');
+    if (!container) return;
     container.innerHTML = '';
     (data.stocks || []).forEach((s) => {
       const card = document.createElement('div');
@@ -58,6 +59,7 @@ async function loadCrisis() {
       return;
     }
     const container = document.getElementById('crisisList');
+    if (!container) return;
     container.innerHTML = '';
     (data.scenarios || []).forEach((sc) => {
       const card = document.createElement('div');
@@ -87,6 +89,7 @@ async function loadParticipants() {
       return;
     }
     const container = document.getElementById('participants');
+    if (!container) return;
     container.innerHTML = '';
     (data.participants || []).forEach((p) => {
       const row = document.createElement('div');

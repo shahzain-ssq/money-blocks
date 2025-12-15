@@ -359,14 +359,18 @@ async function openStockDetail(stock) {
   if (btn) {
     btn.onclick = () => {
       window.location.hash = '#/trade';
-      document.getElementById('tradeSelect').value = stock.id;
-      renderTrade();
+      const tradeSelect = document.getElementById('tradeSelect');
+      if (tradeSelect) {
+        tradeSelect.value = stock.id;
+        renderTrade();
+      }
     };
   }
 }
 
 function renderTrade() {
   const select = document.getElementById('tradeSelect');
+  if (!select) return;
   select.innerHTML = '';
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
@@ -379,12 +383,13 @@ function renderTrade() {
     select.appendChild(opt);
   });
   const search = document.getElementById('tradeSearch');
-  if (search.value) {
+  if (search?.value) {
     const match = state.stocks.find((s) => s.ticker.toLowerCase() === search.value.toLowerCase());
     if (match) select.value = match.id;
   }
   const selected = findStock(select.value);
   const details = document.getElementById('tradeDetails');
+  if (!details) return;
   if (!selected) {
     details.textContent = 'Search for a stock to view details.';
     return;

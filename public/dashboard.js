@@ -1,6 +1,7 @@
 let ws;
 let configPromise;
 let debounceTimer;
+let reconnectDelay = 1000;
 
 function debouncedInit() {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -156,6 +157,9 @@ async function connectSocket(institutionId, wsPublicUrl) {
   const url = new URL(wsPublicUrl);
   url.searchParams.set('institution_id', institutionId);
   ws = new WebSocket(url.toString());
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+  };
   ws.onmessage = (ev) => {
     let msg;
     try {
@@ -179,6 +183,23 @@ async function connectSocket(institutionId, wsPublicUrl) {
   ws.onclose = () => {
     console.warn('WebSocket disconnected');
     ws = null;
+    setTimeout(() => {
+      let cfg;
+      loadConfig()
+        .then((loaded) => {
+          cfg = loaded;
+          if (!cfg.wsPublicUrl) return null;
+          return fetch('/api/auth_me.php');
+        })
+        .then((res) => (res && res.ok ? res.json() : null))
+        .then((me) => {
+          if (me && me.user && cfg?.wsPublicUrl) {
+            connectSocket(me.user.institution_id, cfg.wsPublicUrl);
+            reconnectDelay = Math.min(10000, reconnectDelay * 2);
+          }
+        })
+        .catch((err) => console.warn('WebSocket reconnect failed', err));
+    }, reconnectDelay);
   };
   ws.onerror = (err) => console.warn('WebSocket error', err);
 }
