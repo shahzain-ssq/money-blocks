@@ -104,23 +104,29 @@ function setupNav() {
 
 function route() {
   const hash = window.location.hash || '#/portfolio';
-  const page = hash.replace('#/', '') || 'portfolio';
+  const raw = hash.replace('#/', '') || 'portfolio';
+  const page = raw.split('?')[0];
   const managerRoutes = ['manage-stocks', 'manage-scenarios', 'participants', 'update-price'];
   if (managerRoutes.includes(page) && !isManager()) {
     window.location.hash = '#/portfolio';
     return;
   }
-  toggleSection(page);
-  document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${page}"]`)?.textContent || 'Portal';
-  if (page === 'live') renderLivePrices();
-  if (page === 'trade') renderTrade();
-  if (page === 'portfolio') renderPortfolio();
-  if (page === 'shorts') renderShorts();
-  if (page === 'scenarios') renderScenarios();
-  if (page === 'manage-stocks') renderManageStocks();
-  if (page === 'manage-scenarios') renderManagerScenarios();
-  if (page === 'participants') renderParticipants();
-  if (page === 'update-price') renderPriceUpdater();
+  const allowedRoutes = ['live', 'trade', 'portfolio', 'shorts', 'activity', 'scenarios', 'settings', ...managerRoutes];
+  const target = allowedRoutes.includes(page) ? page : 'portfolio';
+  if (target !== page) {
+    window.location.hash = '#/portfolio';
+  }
+  toggleSection(target);
+  document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${target}"]`)?.textContent || 'Portal';
+  if (target === 'live') renderLivePrices();
+  if (target === 'trade') renderTrade();
+  if (target === 'portfolio') renderPortfolio();
+  if (target === 'shorts') renderShorts();
+  if (target === 'scenarios') renderScenarios();
+  if (target === 'manage-stocks') renderManageStocks();
+  if (target === 'manage-scenarios') renderManagerScenarios();
+  if (target === 'participants') renderParticipants();
+  if (target === 'update-price') renderPriceUpdater();
 }
 
 async function init() {
@@ -159,7 +165,10 @@ function findStock(id) {
 
 async function refreshStocks() {
   const data = await fetchJson('/api/stocks.php', {}, 'Failed to load stocks');
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.stocks = data.stocks || [];
   renderLivePrices();
   renderTrade();
@@ -170,7 +179,10 @@ async function refreshStocks() {
 
 async function refreshPortfolio() {
   const data = await fetchJson('/api/portfolio.php', {}, 'Failed to load portfolio');
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.portfolio = data;
   renderPortfolio();
   renderShorts();
@@ -178,7 +190,10 @@ async function refreshPortfolio() {
 
 async function refreshScenarios() {
   const data = await fetchJson('/api/crisis.php', {}, 'Failed to load scenarios');
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.scenarios = data.scenarios || [];
   renderScenarios();
 }
@@ -304,7 +319,9 @@ async function openStockDetail(stock) {
     const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=${STOCK_HISTORY_LIMIT}`);
     if (!historyRes.ok) throw new Error('history request failed');
     const history = await historyRes.json();
-    prices = (history.prices || []).map((p) => p.price);
+    prices = (history.prices || [])
+      .map((p) => Number(p.price))
+      .filter((v) => Number.isFinite(v));
   } catch (err) {
     console.error('Failed to load stock history', err);
     showToast('Unable to load stock history', 'error');
@@ -601,15 +618,20 @@ function connectSocket() {
   };
   state.ws.onclose = () => {
     setConnectionStatus(false);
+    state.ws = null;
     setTimeout(connectSocket, state.reconnectDelay);
     state.reconnectDelay = Math.min(10000, state.reconnectDelay * 2);
   };
+  state.ws.onerror = (err) => console.warn('WebSocket error', err);
 }
 
 async function loadManagerStocks() {
   if (!isManager()) return;
   const data = await fetchJson('/api/manager_stocks.php', {}, 'Failed to load manager stocks');
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.stocks = data.stocks || [];
   renderManageStocks();
   renderPriceUpdater();
@@ -650,10 +672,13 @@ function confirmDeleteStock(id, ticker) {
 }
 
 let priceSearchTimer;
+let lastPriceSearchTerm = '';
 async function handlePriceSearch(e) {
   const term = e.target.value.trim();
+  lastPriceSearchTerm = term;
   clearTimeout(priceSearchTimer);
   priceSearchTimer = setTimeout(async () => {
+    if (term !== lastPriceSearchTerm) return;
     if (!term) {
       state.managerData.priceOptions = [];
       renderPriceUpdater();
@@ -672,10 +697,15 @@ async function showPriceDetails(id) {
     return;
   }
   const data = await fetchJson(`/api/manager_price.php?stock_id=${id}`, {}, 'Failed to load price');
-  if (!data || data.error) return data ? showToast(data.error, 'error') : null;
-  const stock = data.stock;
   const priceDetails = document.getElementById('priceDetails');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    if (priceDetails) priceDetails.textContent = '';
+    return;
+  }
+  const stock = data.stock;
   if (!stock || !priceDetails) {
+    if (priceDetails) priceDetails.textContent = 'Stock unavailable';
     if (!stock) showToast('Stock not found', 'error');
     return;
   }
@@ -704,7 +734,10 @@ async function updatePrice() {
 async function loadManagerScenarios() {
   if (!isManager()) return;
   const data = await fetchJson('/api/manager_crisis.php', {}, 'Failed to load manager scenarios');
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.scenarios = data.scenarios || [];
   renderManagerScenarios();
 }
@@ -765,7 +798,10 @@ function confirmDeleteScenario(id, title) {
 async function loadParticipants(query = '') {
   if (!isManager()) return;
   const data = await fetchJson(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
-  if (!data) return;
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.participants = data.participants || [];
   renderParticipants();
 }
@@ -781,6 +817,11 @@ async function createParticipant() {
   }, 'Failed to create participant');
   if (!data) return;
   if (data.error) return showToast(data.error, 'error');
+  if (!data.temp_password) {
+    showToast('Participant created but no temporary password was returned', 'error');
+    await loadParticipants();
+    return;
+  }
   const modal = openModal({
     title: 'Participant created',
     body: `
@@ -796,6 +837,10 @@ async function createParticipant() {
   if (copyBtn) {
     copyBtn.onclick = async () => {
       try {
+        if (!navigator.clipboard?.writeText) {
+          showToast('Clipboard not supported in this browser', 'error');
+          return;
+        }
         await navigator.clipboard.writeText(data.temp_password);
         showToast('Copied to clipboard');
       } catch (err) {

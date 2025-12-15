@@ -178,7 +178,9 @@ async function connectSocket(institutionId, wsPublicUrl) {
   };
   ws.onclose = () => {
     console.warn('WebSocket disconnected');
+    ws = null;
   };
+  ws.onerror = (err) => console.warn('WebSocket error', err);
 }
 
 init();
