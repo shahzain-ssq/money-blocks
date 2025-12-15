@@ -62,9 +62,8 @@ class StockService
         }
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $trimmed);
         $like = '%' . $escaped . '%';
-        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, (
-                SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1
-            ) AS current_price
+        $currentPrice = self::latestPriceFragment();
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, {$currentPrice} AS current_price
             FROM stocks s WHERE s.institution_id = ? AND s.active = 1 AND (s.ticker LIKE ? ESCAPE '\\\\' OR s.name LIKE ? ESCAPE '\\\\') ORDER BY s.ticker LIMIT 20");
         $stmt->execute([$institutionId, $like, $like]);
         return $stmt->fetchAll();

@@ -553,6 +553,10 @@ function connectSocket() {
       debouncePortfolioRefresh(refreshPortfolio);
     }
     if (msg.type === 'crisis_published') {
+      if (!msg.title || typeof msg.title !== 'string') {
+        console.warn('Invalid crisis_published message', msg);
+        return;
+      }
       showToast(`Scenario published: ${msg.title}`);
       refreshScenarios();
     }

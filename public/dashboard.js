@@ -1,5 +1,11 @@
 let ws;
 let configPromise;
+let debounceTimer;
+
+function debouncedInit() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => init(), 300);
+}
 
 async function loadConfig() {
   if (!configPromise) {
@@ -140,13 +146,19 @@ async function connectSocket(institutionId, wsPublicUrl) {
   url.searchParams.set('institution_id', institutionId);
   ws = new WebSocket(url.toString());
   ws.onmessage = (ev) => {
-    const msg = JSON.parse(ev.data);
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch (err) {
+      console.warn('Invalid WebSocket message', err);
+      return;
+    }
     if (msg.type === 'price_update') {
-      init();
+      debouncedInit();
     }
     if (msg.type === 'crisis_published') {
       alert(`New scenario: ${msg.title}`);
-      init();
+      debouncedInit();
     }
   };
   ws.onclose = () => {
