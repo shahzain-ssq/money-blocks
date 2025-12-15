@@ -3,15 +3,20 @@ require_once __DIR__ . '/Database.php';
 
 class StockService
 {
+    private static function latestPriceFragment(string $alias = 's', string $column = 'price', int $offset = 0): string
+    {
+        $safeOffset = max(0, $offset);
+        $offsetClause = $safeOffset > 0 ? " OFFSET {$safeOffset}" : '';
+        return sprintf('(SELECT %s FROM stock_prices WHERE stock_id = %s.id ORDER BY created_at DESC LIMIT 1%s)', $column, $alias, $offsetClause);
+    }
+
     public static function listStocks(int $institutionId): array
     {
         $pdo = Database::getConnection();
-        // TODO: optimize correlated subqueries with a derived latest-price table or shared helper when datasets grow
-        $stmt = $pdo->prepare('SELECT s.*,
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price,
-                (SELECT created_at FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS updated_at,
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1 OFFSET 1) AS previous_price
-            FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker');
+        $currentPrice = self::latestPriceFragment();
+        $currentTimestamp = self::latestPriceFragment('s', 'created_at');
+        $previousPrice = self::latestPriceFragment('s', 'price', 1);
+        $stmt = $pdo->prepare("SELECT s.*,{$currentPrice} AS current_price,{$currentTimestamp} AS updated_at,{$previousPrice} AS previous_price FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker");
         $stmt->execute([$institutionId]);
         $stocks = $stmt->fetchAll();
         foreach ($stocks as &$stock) {
@@ -40,11 +45,9 @@ class StockService
     public static function latestPrice(int $stockId, int $institutionId): ?array
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT s.id, s.ticker, s.name, (
-                SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1
-            ) AS current_price,
-            (SELECT created_at FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS updated_at
-            FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1');
+        $currentPrice = self::latestPriceFragment('s');
+        $updatedAt = self::latestPriceFragment('s', 'created_at');
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, {$currentPrice} AS current_price, {$updatedAt} AS updated_at FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1");
         $stmt->execute([$stockId, $institutionId]);
         $stock = $stmt->fetch();
         return $stock ?: null;

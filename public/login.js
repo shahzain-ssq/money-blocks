@@ -13,7 +13,7 @@ async function handleLogin(e) {
   const res = await fetch('/api/auth_login.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await res.json();
   document.getElementById('status').textContent = data.error ? data.error : 'Logged in';
-  if (!data.error) window.location = '/public/dashboard.html';
+  if (!data.error) window.location = '/dashboard.html';
 }
 
 document.getElementById('loginForm').addEventListener('submit', handleLogin);

@@ -1,7 +1,7 @@
 async function initManager() {
   const meRes = await fetch('/api/auth_me.php');
   const me = await meRes.json();
-  if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) return window.location = '/public/index.html';
+  if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) return window.location = '/index.html';
   loadStocks();
   loadCrisis();
   loadParticipants();

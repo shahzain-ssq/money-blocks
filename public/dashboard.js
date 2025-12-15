@@ -16,7 +16,7 @@ async function init() {
     const appConfig = await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
     const me = await meRes.json();
-    if (!me.user) return window.location = '/public/index.html';
+    if (!me.user) return window.location = '/index.html';
     const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
       fetch('/api/portfolio.php'),
       fetch('/api/stocks.php'),

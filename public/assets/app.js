@@ -104,7 +104,7 @@ async function init() {
     const meRes = await fetch('/api/auth_me.php');
     const me = await meRes.json();
     if (!me.user) {
-      window.location = '/public/index.html';
+      window.location = '/index.html';
       return;
     }
     state.user = me.user;
@@ -467,7 +467,7 @@ function bindForms() {
   if (createParticipantBtn) createParticipantBtn.onclick = createParticipant;
   document.getElementById('logoutBtn').onclick = async () => {
     await fetch('/api/auth_login.php', { method: 'DELETE' });
-    window.location = '/public/index.html';
+    window.location = '/index.html';
   };
 }
 

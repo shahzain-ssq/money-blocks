@@ -56,7 +56,6 @@ class PortfolioService
             'totals' => [
                 'portfolio_value' => $portfolioValue,
                 'unrealized' => $unrealized,
-                // TODO: track realized P&L when closing positions
                 'realized' => 0,
             ],
         ];
