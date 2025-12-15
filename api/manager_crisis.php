@@ -12,16 +12,16 @@ $method = $_SERVER['REQUEST_METHOD'];
 $pdo = Database::getConnection();
 
 if ($method === 'GET') {
-    jsonResponse(['scenarios' => CrisisService::managerList((int)$user['institution_id'])]);
+    jsonResponse(['ok' => true, 'scenarios' => CrisisService::managerList((int)$user['institution_id'])]);
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+
 if ($method === 'POST') {
     $title = trim($input['title'] ?? '');
     if ($title === '') {
         jsonResponse(['error' => 'title_required'], 422);
     }
-
     $startsAt = $input['starts_at'] ?? null;
     $endsAt = $input['ends_at'] ?? null;
     if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
@@ -51,7 +51,7 @@ if ($method === 'POST') {
             'description' => $input['description'] ?? '',
         ]);
     }
-    jsonResponse(['status' => 'created', 'id' => $id]);
+    jsonResponse(['ok' => true, 'id' => $id]);
 }
 
 if ($method === 'PUT') {
@@ -99,7 +99,20 @@ if ($method === 'PUT') {
             'description' => $input['description'] ?? '',
         ]);
     }
-    jsonResponse(['status' => 'updated']);
+    jsonResponse(['ok' => true]);
+}
+
+if ($method === 'DELETE') {
+    $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
+    if (!$id) {
+        jsonResponse(['error' => 'id_required'], 422);
+    }
+    $stmt = $pdo->prepare('DELETE FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
+    $stmt->execute([$id, $user['institution_id']]);
+    if ($stmt->rowCount() === 0) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+    jsonResponse(['ok' => true]);
 }
 
 jsonResponse(['error' => 'unsupported_method'], 405);
