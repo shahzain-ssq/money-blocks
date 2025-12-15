@@ -11,6 +11,8 @@ const state = {
   managerData: { stocks: [], scenarios: [], participants: [], priceOptions: [] },
   ws: null,
   reconnectDelay: 1000,
+  reconnectAttempts: 0,
+  maxReconnectAttempts: 8,
 };
 
 function escapeHtml(value) {
@@ -150,10 +152,11 @@ async function init() {
     applyUser();
     setupNav();
     bindForms();
-    await Promise.all([refreshStocks(), refreshPortfolio(), refreshScenarios()]);
+    const promises = [refreshStocks(), refreshPortfolio(), refreshScenarios()];
     if (isManager()) {
-      await refreshManagerData();
+      promises.push(refreshManagerData());
     }
+    await Promise.all(promises);
     connectSocket();
     route();
     window.addEventListener('hashchange', route);
@@ -613,6 +616,7 @@ function connectSocket() {
   state.ws.onopen = () => {
     setConnectionStatus(true);
     state.reconnectDelay = 1000;
+    state.reconnectAttempts = 0;
   };
   state.ws.onmessage = (ev) => {
     let msg;
@@ -657,6 +661,11 @@ function connectSocket() {
   state.ws.onclose = () => {
     setConnectionStatus(false);
     state.ws = null;
+    state.reconnectAttempts += 1;
+    if (state.reconnectAttempts > state.maxReconnectAttempts) {
+      console.warn('Max WebSocket reconnect attempts reached');
+      return;
+    }
     setTimeout(async () => {
       try {
         const meRes = await fetch('/api/auth_me.php');
