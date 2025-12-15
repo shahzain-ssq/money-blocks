@@ -6,8 +6,8 @@ class StockService
     public static function listStocks(int $institutionId): array
     {
         $pdo = Database::getConnection();
-        // TODO: optimize correlated subqueries with a derived latest-price table when datasets grow
-        $stmt = $pdo->prepare('SELECT s.*, 
+        // TODO: optimize correlated subqueries with a derived latest-price table or shared helper when datasets grow
+        $stmt = $pdo->prepare('SELECT s.*,
                 (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price,
                 (SELECT created_at FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS updated_at,
                 (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1 OFFSET 1) AS previous_price
@@ -53,7 +53,11 @@ class StockService
     public static function searchStocks(int $institutionId, string $query): array
     {
         $pdo = Database::getConnection();
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($query));
+        $trimmed = trim($query);
+        if ($trimmed === '') {
+            return [];
+        }
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $trimmed);
         $like = '%' . $escaped . '%';
         $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, (
                 SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1

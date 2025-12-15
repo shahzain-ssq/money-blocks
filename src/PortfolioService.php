@@ -3,9 +3,10 @@ require_once __DIR__ . '/Database.php';
 
 class PortfolioService
 {
-    private static function getCurrentPriceSubquery(): string
+    private static function getCurrentPriceSubquery(string $alias = 's'): string
     {
-        return '(SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1)';
+        // Note: the alias defaults to "s" to match stock joins; override if using a different table alias.
+        return sprintf('(SELECT price FROM stock_prices WHERE stock_id = %s.id ORDER BY created_at DESC LIMIT 1)', $alias);
     }
 
     public static function getUserPortfolio(int $userId, int $institutionId): array
@@ -18,7 +19,7 @@ class PortfolioService
             $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, NOW(), NOW())')->execute([$userId]);
             $portfolio = ['id' => $pdo->lastInsertId(), 'user_id' => $userId, 'cash_balance' => 100000];
         }
-        $priceSubquery = self::getCurrentPriceSubquery();
+        $priceSubquery = self::getCurrentPriceSubquery('s');
         $positionsStmt = $pdo->prepare("SELECT p.*, s.ticker, s.name,
                 $priceSubquery AS current_price
             FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?");
