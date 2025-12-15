@@ -12,24 +12,24 @@ from urllib.parse import parse_qs, urlparse
 import websockets
 from aiohttp import web
 
-EXPECTED_PYTHON = (3, 11, 13)
+MIN_PYTHON = (3, 11)
 
 
 def _enforce_python_version() -> None:
-    current_version = sys.version_info[:3]
+    current_version = sys.version_info[:2]
     print(
         json.dumps(
             {
                 "event": "python_runtime",
-                "detected": ".".join(map(str, current_version)),
-                "expected": ".".join(map(str, EXPECTED_PYTHON)),
+                "detected": ".".join(map(str, sys.version_info[:3])),
+                "minimum": ".".join(map(str, MIN_PYTHON)),
             }
         )
     )
-    if current_version != EXPECTED_PYTHON:
+    if current_version < MIN_PYTHON:
         sys.exit(
-            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]}.{EXPECTED_PYTHON[2]} required; "
-            f"found {current_version[0]}.{current_version[1]}.{current_version[2]}"
+            f"Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ required; "
+            f"found {sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}"
         )
 
 
@@ -266,12 +266,12 @@ async def start_servers():
     finally:
         ws_server.close()
         await ws_server.wait_closed()
-        await runner.cleanup()
         prune_task.cancel()
         try:
             await prune_task
         except asyncio.CancelledError:
             pass
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
