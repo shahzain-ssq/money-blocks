@@ -11,20 +11,20 @@
     <aside class="sidebar">
       <div class="brand">💹 MoneyBlocks</div>
       <nav id="studentNav">
-        <a class="nav-link" data-route="portfolio">Portfolio</a>
-        <a class="nav-link" data-route="live">Live Prices</a>
-        <a class="nav-link" data-route="trade">Trade</a>
-        <a class="nav-link" data-route="shorts">Shorts</a>
-        <a class="nav-link" data-route="activity">Activity</a>
-        <a class="nav-link" data-route="scenarios">Crisis Scenarios</a>
-        <a class="nav-link" data-route="settings">Settings</a>
+        <a class="nav-link" href="#/portfolio" data-route="portfolio">Portfolio</a>
+        <a class="nav-link" href="#/live" data-route="live">Live Prices</a>
+        <a class="nav-link" href="#/trade" data-route="trade">Trade</a>
+        <a class="nav-link" href="#/shorts" data-route="shorts">Shorts</a>
+        <a class="nav-link" href="#/activity" data-route="activity">Activity</a>
+        <a class="nav-link" href="#/scenarios" data-route="scenarios">Crisis Scenarios</a>
+        <a class="nav-link" href="#/settings" data-route="settings">Settings</a>
       </nav>
       <nav id="managerNav" style="display:none;">
         <div class="nav-label">Manager</div>
-        <a class="nav-link" data-route="manage-stocks">Manage Stocks</a>
-        <a class="nav-link" data-route="update-price">Update Stock Price</a>
-        <a class="nav-link" data-route="manage-scenarios">Manage Scenarios</a>
-        <a class="nav-link" data-route="participants">Participants</a>
+        <a class="nav-link" href="#/manage-stocks" data-route="manage-stocks">Manage Stocks</a>
+        <a class="nav-link" href="#/update-price" data-route="update-price">Update Stock Price</a>
+        <a class="nav-link" href="#/manage-scenarios" data-route="manage-scenarios">Manage Scenarios</a>
+        <a class="nav-link" href="#/participants" data-route="participants">Participants</a>
       </nav>
     </aside>
     <div class="sidebar-overlay" aria-hidden="true"></div>
@@ -140,7 +140,7 @@
               <button class="btn" id="createStockBtn">Create Stock</button>
             </div>
             <table class="table" id="manageStocksTable">
-              <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th></th></tr></thead>
+              <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th><span class="sr-only">Actions</span></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -181,7 +181,7 @@
           <div class="card">
             <h3>Existing Scenarios</h3>
             <table class="table" id="scenarioTable">
-              <thead><tr><th>Title</th><th>Status</th><th>Window</th><th></th></tr></thead>
+              <thead><tr><th>Title</th><th>Status</th><th>Window</th><th><span class="sr-only">Actions</span></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -196,7 +196,7 @@
               <button class="btn" id="createParticipantBtn">Add Participant</button>
             </div>
             <table class="table" id="participantsTable">
-              <thead><tr><th>User</th><th>Email</th><th>Cash</th><th></th></tr></thead>
+              <thead><tr><th>User</th><th>Email</th><th>Cash</th><th><span class="sr-only">Actions</span></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -204,6 +204,6 @@
       </div>
     </main>
   </div>
-  <script type="module" src="/public/assets/app.js"></script>
+  <script type="module" src="/assets/app.js"></script>
 </body>
 </html>

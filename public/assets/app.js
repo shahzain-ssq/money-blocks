@@ -63,13 +63,17 @@ function setupNav() {
   const overlay = document.querySelector('.sidebar-overlay');
   const sidebar = document.querySelector('.sidebar');
   const toggle = document.querySelector('.sidebar-toggle');
+  const setOverlayVisible = (open) => {
+    sidebar.classList.toggle('open', open);
+    overlay.classList.toggle('show', open);
+    overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+  };
   toggle.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('show');
+    const open = !sidebar.classList.contains('open');
+    setOverlayVisible(open);
   });
   overlay.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('show');
+    setOverlayVisible(false);
   });
 }
 
