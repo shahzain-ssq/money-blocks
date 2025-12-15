@@ -1,5 +1,7 @@
 import { showToast, openModal, toggleSection, formatCurrency, formatChange, pill } from './components.js';
 
+const STOCK_HISTORY_LIMIT = 24;
+
 const state = {
   config: null,
   user: null,
@@ -275,7 +277,7 @@ function renderLivePrices() {
 }
 
 async function openStockDetail(stock) {
-  const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=24`);
+  const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=${STOCK_HISTORY_LIMIT}`);
   const history = await historyRes.json();
   const prices = (history.prices || []).map((p) => p.price);
   const minP = Math.min(...prices, 0);
@@ -528,12 +530,24 @@ function connectSocket() {
       return;
     }
     if (msg.type === 'price_update') {
-      const stock = findStock(msg.stock_id);
-      if (stock) {
-        stock.previous_price = stock.current_price;
-        stock.current_price = msg.price;
-        stock.updated_at = new Date().toISOString();
+      const stockId = Number(msg.stock_id);
+      const price = Number(msg.price);
+      if (!Number.isFinite(stockId) || stockId <= 0) {
+        console.warn('Invalid stock id in price_update');
+        return;
       }
+      const stock = findStock(stockId);
+      if (!stock) {
+        console.warn('Unknown stock in price_update', stockId);
+        return;
+      }
+      if (!Number.isFinite(price) || price <= 0) {
+        console.warn('Invalid price in price_update');
+        return;
+      }
+      stock.previous_price = stock.current_price;
+      stock.current_price = price;
+      stock.updated_at = new Date().toISOString();
       renderLivePrices();
       renderTrade();
       debouncePortfolioRefresh(refreshPortfolio);
