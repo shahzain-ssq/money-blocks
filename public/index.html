@@ -4,25 +4,28 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Financial Simulation Portal</title>
-  <link rel="stylesheet" href="/public/styles.css" />
+  <link rel="stylesheet" href="/public/assets/styles.css" />
 </head>
 <body>
-  <div class="layout narrow">
-    <h1>Financial Simulation Portal</h1>
-    <section>
-      <h2>Select Institution</h2>
-      <select id="institution"></select>
-      <button id="googleBtn" disabled>Login with Google</button>
-    </section>
-    <section>
-      <h2>Local Login</h2>
-      <form id="loginForm">
-        <label>Username or Email<input type="text" name="identifier" required /></label>
-        <label>Password<input type="password" name="password" required /></label>
-        <button type="submit">Login</button>
-      </form>
-    </section>
-    <p id="status"></p>
+  <div class="app-shell" style="grid-template-columns: 1fr;">
+    <main class="main" style="width:100%;">
+      <div class="content" style="max-width:720px; margin:0 auto;">
+        <div class="card">
+          <h2>Welcome to MoneyBlocks</h2>
+          <p class="muted">Select your institution and sign in to enter the trading portal.</p>
+          <div class="form-row">
+            <select class="input" id="institution"></select>
+            <button class="btn" id="googleBtn" disabled>Login with Google</button>
+          </div>
+          <form id="loginForm" style="margin-top:1rem; display:grid; gap:0.75rem;">
+            <label>Username or Email<input type="text" name="identifier" class="input" required /></label>
+            <label>Password<input type="password" name="password" class="input" required /></label>
+            <button class="btn" type="submit">Login</button>
+          </form>
+          <p id="status" class="muted"></p>
+        </div>
+      </div>
+    </main>
   </div>
   <script src="/public/login.js"></script>
 </body>

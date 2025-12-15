@@ -13,14 +13,40 @@ class PortfolioService
             $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, NOW(), NOW())')->execute([$userId]);
             $portfolio = ['id' => $pdo->lastInsertId(), 'user_id' => $userId, 'cash_balance' => 100000];
         }
-        $positionsStmt = $pdo->prepare('SELECT p.*, s.ticker, s.name FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?');
+        $positionsStmt = $pdo->prepare('SELECT p.*, s.ticker, s.name,
+                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price
+            FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?');
         $positionsStmt->execute([$institutionId, $portfolio['id']]);
-        $shortsStmt = $pdo->prepare('SELECT sp.*, s.ticker FROM short_positions sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.portfolio_id = ? AND sp.closed = 0');
-        $shortsStmt->execute([$portfolio['id']]);
+        $positions = $positionsStmt->fetchAll();
+        $portfolioValue = 0;
+        $unrealized = 0;
+        foreach ($positions as &$pos) {
+            $current = $pos['current_price'] ?? $pos['avg_price'];
+            $pos['position_value'] = $current * $pos['quantity'];
+            $pos['unrealized_pl'] = ($current - $pos['avg_price']) * $pos['quantity'];
+            $portfolioValue += $pos['position_value'];
+            $unrealized += $pos['unrealized_pl'];
+        }
+
+        $shortsStmt = $pdo->prepare('SELECT sp.*, s.ticker,
+                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price
+            FROM short_positions sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.portfolio_id = ? AND s.institution_id = ? AND sp.closed = 0');
+        $shortsStmt->execute([$portfolio['id'], $institutionId]);
+        $shorts = $shortsStmt->fetchAll();
+        foreach ($shorts as &$sh) {
+            $current = $sh['current_price'] ?? $sh['open_price'];
+            $sh['pl'] = ($sh['open_price'] - $current) * $sh['quantity'];
+        }
+
         return [
             'portfolio' => $portfolio,
-            'positions' => $positionsStmt->fetchAll(),
-            'shorts' => $shortsStmt->fetchAll(),
+            'positions' => $positions,
+            'shorts' => $shorts,
+            'totals' => [
+                'portfolio_value' => $portfolioValue,
+                'unrealized' => $unrealized,
+                'realized' => 0,
+            ],
         ];
     }
 }
