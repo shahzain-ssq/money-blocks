@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import websockets
 from aiohttp import web
 
-EXPECTED_PYTHON = (3, 11)
+MIN_PYTHON = (3, 11)
 
 
 def _enforce_python_version() -> None:
@@ -21,15 +21,15 @@ def _enforce_python_version() -> None:
         json.dumps(
             {
                 "event": "python_runtime",
-                "detected": ".".join(map(str, current_version)),
-                "expected": ".".join(map(str, EXPECTED_PYTHON)),
+                "detected": ".".join(map(str, sys.version_info[:3])),
+                "minimum": ".".join(map(str, MIN_PYTHON)),
             }
         )
     )
-    if current_version != EXPECTED_PYTHON:
+    if current_version < MIN_PYTHON:
         sys.exit(
-            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]} required; "
-            f"found {current_version[0]}.{current_version[1]}"
+            f"Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ required; "
+            f"found {sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}"
         )
 
 
@@ -37,7 +37,11 @@ _enforce_python_version()
 
 connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
 
-ADMIN_TOKEN = os.environ.get("WS_ADMIN_TOKEN") or os.environ.get("ADMIN_TOKEN")
+ADMIN_TOKEN = (
+    os.environ.get("WS_ADMIN_TOKEN")
+    if "WS_ADMIN_TOKEN" in os.environ
+    else os.environ.get("ADMIN_TOKEN")
+)
 if not ADMIN_TOKEN:
     raise RuntimeError(
         "WS_ADMIN_TOKEN (or ADMIN_TOKEN) environment variable must be set for admin endpoints"
@@ -160,17 +164,6 @@ async def broadcast(message: dict):
             delivered += 1
             continue
         await unregister(ws, institution_id)
-        if isinstance(result, Exception):
-            print(
-                json.dumps(
-                    {
-                        "event": "send_exception",
-                        "institution_id": institution_id,
-                        "remote": str(ws.remote_address),
-                        "error": str(result),
-                    }
-                )
-            )
 
     return delivered
 
@@ -273,12 +266,12 @@ async def start_servers():
     finally:
         ws_server.close()
         await ws_server.wait_closed()
-        await runner.cleanup()
         prune_task.cancel()
         try:
             await prune_task
         except asyncio.CancelledError:
             pass
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
