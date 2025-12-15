@@ -80,6 +80,9 @@ function setupNav() {
   const overlay = document.querySelector('.sidebar-overlay');
   const sidebar = document.querySelector('.sidebar');
   const toggle = document.querySelector('.sidebar-toggle');
+  if (!overlay || !sidebar || !toggle) {
+    return;
+  }
   const setOverlayVisible = (open) => {
     sidebar.classList.toggle('open', open);
     overlay.classList.toggle('show', open);
