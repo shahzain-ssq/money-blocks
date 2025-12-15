@@ -69,6 +69,8 @@ def _builtin_load_env(dotenv_path: Path, *, override: bool = False) -> bool:
 
 
 def _load_env_from_root() -> None:
+    # Assumes this file lives at <project_root>/websocket/server.py; adjust parent
+    # traversal if the file is relocated within the repository structure.
     root = Path(__file__).resolve().parents[1]
     dotenv_path = root / ".env"
 
@@ -80,7 +82,7 @@ def _load_env_from_root() -> None:
 
             loaded = bool(load_dotenv(dotenv_path, override=False))
             method = "python-dotenv"
-        except Exception:
+        except (ImportError, ModuleNotFoundError, OSError):
             loaded = _builtin_load_env(dotenv_path, override=False)
             method = "builtin"
 
