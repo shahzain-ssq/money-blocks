@@ -1,14 +1,39 @@
+#!/usr/bin/env python3
 """Lightweight WebSocket broadcaster for institution-scoped events."""
 import asyncio
 import hmac
 import json
 import os
 import signal
+import sys
 from typing import Dict, Optional, Set
 from urllib.parse import parse_qs, urlparse
 
 import websockets
 from aiohttp import web
+
+EXPECTED_PYTHON = (3, 11, 13)
+
+
+def _enforce_python_version() -> None:
+    current_version = sys.version_info[:3]
+    print(
+        json.dumps(
+            {
+                "event": "python_runtime",
+                "detected": ".".join(map(str, current_version)),
+                "expected": ".".join(map(str, EXPECTED_PYTHON)),
+            }
+        )
+    )
+    if current_version != EXPECTED_PYTHON:
+        sys.exit(
+            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]}.{EXPECTED_PYTHON[2]} required; "
+            f"found {current_version[0]}.{current_version[1]}.{current_version[2]}"
+        )
+
+
+_enforce_python_version()
 
 connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
 
@@ -65,14 +90,14 @@ def _normalize_origin(origin: Optional[str]) -> Optional[str]:
     return origin.rstrip("/") if origin else origin
 
 
-async def handler(ws, path):
+async def handler(ws):
     origin = ws.request_headers.get("Origin")
     normalized_origin = _normalize_origin(origin)
     if not normalized_origin or normalized_origin not in ALLOWED_ORIGINS:
         await ws.close(code=1008, reason="origin not allowed")
         return
 
-    parsed = urlparse(path or "")
+    parsed = urlparse(ws.path or "")
     query_params = parse_qs(parsed.query)
     try:
         institution_raw = query_params.get("institution_id", [None])[0]
@@ -130,7 +155,7 @@ async def broadcast(message: dict):
     )
 
     delivered = 0
-    for ws, result in zip(recipients, results):
+    for ws, result in zip(recipients, results, strict=True):
         if result is True:
             delivered += 1
             continue
@@ -212,7 +237,9 @@ async def prune_connections():
 
 
 async def start_servers():
-    ws_server = await websockets.serve(handler, WS_SERVER_HOST, WS_SERVER_PORT)
+    ws_server = await websockets.serve(
+        handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=20
+    )
 
     app = web.Application()
     app.router.add_get("/health", healthcheck)
@@ -222,11 +249,8 @@ async def start_servers():
     site = web.TCPSite(runner, WS_SERVER_HOST, ADMIN_PORT)
     await site.start()
 
-    loop = asyncio.get_event_loop()
-    if hasattr(loop, "create_task"):
-        prune_task = loop.create_task(prune_connections())
-    else:
-        prune_task = asyncio.ensure_future(prune_connections())
+    loop = asyncio.get_running_loop()
+    prune_task = asyncio.create_task(prune_connections())
 
     print(
         "WebSocket listening on "
@@ -238,8 +262,11 @@ async def start_servers():
     def signal_handler():
         stop_event.set()
 
-    loop.add_signal_handler(signal.SIGTERM, signal_handler)
-    loop.add_signal_handler(signal.SIGINT, signal_handler)
+    try:
+        loop.add_signal_handler(signal.SIGTERM, signal_handler)
+        loop.add_signal_handler(signal.SIGINT, signal_handler)
+    except NotImplementedError:
+        pass
 
     try:
         await stop_event.wait()
@@ -255,8 +282,4 @@ async def start_servers():
 
 
 if __name__ == "__main__":
-    if hasattr(asyncio, "run"):
-        asyncio.run(start_servers())
-    else:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(start_servers())
+    asyncio.run(start_servers())
