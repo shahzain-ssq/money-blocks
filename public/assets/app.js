@@ -513,7 +513,8 @@ function bindForms() {
     tradeSearch.addEventListener('input', (e) => {
       const term = e.target.value.toLowerCase();
       const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term) || s.name.toLowerCase().includes(term));
-      if (match) document.getElementById('tradeSelect').value = match.id;
+      const tradeSelectEl = document.getElementById('tradeSelect');
+      if (match && tradeSelectEl) tradeSelectEl.value = match.id;
       renderTrade();
     });
   }
