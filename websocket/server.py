@@ -12,11 +12,11 @@ from urllib.parse import parse_qs, urlparse
 import websockets
 from aiohttp import web
 
-EXPECTED_PYTHON = (3, 11, 13)
+EXPECTED_PYTHON = (3, 11)
 
 
 def _enforce_python_version() -> None:
-    current_version = sys.version_info[:3]
+    current_version = sys.version_info[:2]
     print(
         json.dumps(
             {
@@ -28,8 +28,8 @@ def _enforce_python_version() -> None:
     )
     if current_version != EXPECTED_PYTHON:
         sys.exit(
-            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]}.{EXPECTED_PYTHON[2]} required; "
-            f"found {current_version[0]}.{current_version[1]}.{current_version[2]}"
+            f"Python {EXPECTED_PYTHON[0]}.{EXPECTED_PYTHON[1]} required; "
+            f"found {current_version[0]}.{current_version[1]}"
         )
 
 
