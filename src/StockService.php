@@ -15,11 +15,11 @@ class StockService
         $stmt->execute([$institutionId]);
         $stocks = $stmt->fetchAll();
         foreach ($stocks as &$stock) {
-            $current = $stock['current_price'] ?? $stock['initial_price'];
-            $prevBase = $stock['previous_price'] ?? $stock['initial_price'];
-            $change = ($current ?? 0) - ($prevBase ?? 0);
+            $current = $stock['current_price'] ?? $stock['initial_price'] ?? 0;
+            $prevBase = $stock['previous_price'] ?? $stock['initial_price'] ?? 0;
+            $change = $current - $prevBase;
             $stock['change'] = $change;
-            $stock['change_pct'] = ($prevBase ?? 0) ? ($change / $prevBase) * 100 : 0;
+            $stock['change_pct'] = $prevBase ? ($change / $prevBase) * 100 : 0;
         }
         return $stocks;
     }
@@ -53,7 +53,7 @@ class StockService
     public static function searchStocks(int $institutionId, string $query): array
     {
         $pdo = Database::getConnection();
-        $escaped = addcslashes($query, '%_\\');
+        $escaped = addcslashes(trim($query), '%_\\');
         $like = '%' . $escaped . '%';
         $stmt = $pdo->prepare('SELECT s.id, s.ticker, s.name, (
                 SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1
@@ -66,6 +66,7 @@ class StockService
     public static function history(int $stockId, int $institutionId, int $limit = 30): array
     {
         $pdo = Database::getConnection();
+        $limit = max(1, min($limit, 365));
         $stmt = $pdo->prepare('SELECT s.id FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1');
         $stmt->execute([$stockId, $institutionId]);
         if (!$stmt->fetch()) {

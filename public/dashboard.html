@@ -35,8 +35,8 @@
           <span class="title" id="pageTitle">Portfolio</span>
         </div>
         <div class="actions">
-          <span class="badge" id="connectionBadge"><span class="status-dot offline"></span>Disconnected</span>
-          <div class="user-menu" id="userMenu">User</div>
+          <span class="badge" id="connectionBadge" aria-live="polite" aria-atomic="true"><span class="status-dot offline"></span>Disconnected</span>
+          <button class="user-menu" id="userMenu" type="button" aria-haspopup="menu" aria-expanded="false">User</button>
         </div>
       </header>
       <div class="content">
@@ -56,7 +56,7 @@
 
         <section id="live" class="section">
           <div class="card">
-            <div class="form-row"><input class="input" id="liveSearch" placeholder="Search ticker or name" /></div>
+            <div class="form-row"><input class="input" id="liveSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" /></div>
             <table class="table" id="liveTable">
               <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th>Change</th><th>Updated</th></tr></thead>
               <tbody></tbody>
@@ -68,7 +68,7 @@
           <div class="card">
             <h3>Buy / Sell</h3>
             <div class="form-row">
-              <input class="input" id="tradeSearch" placeholder="Search ticker or name" />
+              <input class="input" id="tradeSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" />
               <select class="input" id="tradeSelect"></select>
             </div>
             <div id="tradeDetails" class="muted" style="margin:0.5rem 0;"></div>
@@ -88,7 +88,7 @@
             <div class="card">
               <h3>Open Short</h3>
               <div class="form-row">
-                <input class="input" id="shortSearch" placeholder="Find stock" />
+                <input class="input" id="shortSearch" placeholder="Find stock" aria-label="Find stock" />
                 <select class="input" id="shortSelect"></select>
               </div>
               <div class="form-row">
@@ -150,7 +150,7 @@
           <div class="card">
             <h3>Update Stock Price</h3>
             <div class="form-row">
-              <input class="input" id="priceSearch" placeholder="Search ticker or name" />
+              <input class="input" id="priceSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" />
               <select class="input" id="priceSelect"></select>
             </div>
             <div id="priceDetails" class="muted"></div>
@@ -190,9 +190,9 @@
         <section id="participants" class="section">
           <div class="card">
             <div class="form-row">
-              <input class="input" id="participantSearch" placeholder="Search participants" />
-              <input class="input" id="participantUsername" placeholder="Username" autocomplete="username" />
-              <input class="input" id="participantEmail" placeholder="Email" autocomplete="email" type="email" />
+              <input class="input" id="participantSearch" placeholder="Search participants" aria-label="Search participants" />
+              <input class="input" id="participantUsername" placeholder="Username" autocomplete="username" aria-label="Participant username" />
+              <input class="input" id="participantEmail" placeholder="Email" autocomplete="email" type="email" aria-label="Participant email" />
               <button class="btn" id="createParticipantBtn">Add Participant</button>
             </div>
             <table class="table" id="participantsTable">

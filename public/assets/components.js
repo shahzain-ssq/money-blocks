@@ -84,5 +84,8 @@ export function formatChange(value) {
 }
 
 export function pill(label, status) {
-  return `<span class="pill ${status}">${label}</span>`;
+  const span = document.createElement('span');
+  span.className = `pill ${status}`;
+  span.textContent = label;
+  return span;
 }

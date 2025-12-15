@@ -51,6 +51,11 @@ if ($method === 'PUT') {
     if (!$id) {
         jsonResponse(['error' => 'id_required'], 422);
     }
+    $exists = $pdo->prepare('SELECT 1 FROM stocks WHERE id = ? AND institution_id = ?');
+    $exists->execute([$id, $user['institution_id']]);
+    if (!$exists->fetchColumn()) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
     $ticker = trim($input['ticker'] ?? '');
     $name = trim($input['name'] ?? '');
     $initialPrice = (float)($input['initial_price'] ?? 0);
@@ -69,9 +74,6 @@ if ($method === 'PUT') {
         $id,
         $user['institution_id'],
     ]);
-    if ($update->rowCount() === 0) {
-        jsonResponse(['error' => 'not_found'], 404);
-    }
     jsonResponse(['ok' => true]);
 }
 

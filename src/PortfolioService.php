@@ -27,9 +27,10 @@ class PortfolioService
         $portfolioValue = 0;
         $unrealized = 0;
         foreach ($positions as &$pos) {
-            $current = $pos['current_price'] ?? $pos['avg_price'];
+            $current = $pos['current_price'] ?? $pos['avg_price'] ?? 0;
+            $avg = $pos['avg_price'] ?? 0;
             $pos['position_value'] = $current * $pos['quantity'];
-            $pos['unrealized_pl'] = ($current - $pos['avg_price']) * $pos['quantity'];
+            $pos['unrealized_pl'] = ($current - $avg) * $pos['quantity'];
             $portfolioValue += $pos['position_value'];
             $unrealized += $pos['unrealized_pl'];
         }
@@ -40,8 +41,9 @@ class PortfolioService
         $shortsStmt->execute([$portfolio['id'], $institutionId]);
         $shorts = $shortsStmt->fetchAll();
         foreach ($shorts as &$sh) {
-            $current = $sh['current_price'] ?? $sh['open_price'];
-            $sh['pl'] = ($sh['open_price'] - $current) * $sh['quantity'];
+            $current = $sh['current_price'] ?? $sh['open_price'] ?? 0;
+            $open = $sh['open_price'] ?? 0;
+            $sh['pl'] = ($open - $current) * $sh['quantity'];
         }
 
         return [

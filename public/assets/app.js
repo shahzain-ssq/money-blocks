@@ -401,8 +401,7 @@ function renderScenarios() {
     desc.className = 'muted';
     desc.textContent = sc.description || '';
     left.append(title, desc);
-    const badge = document.createElement('div');
-    badge.innerHTML = pill(sc.status === 'published' ? 'Published' : 'Draft', sc.status);
+    const badge = pill(sc.status === 'published' ? 'Published' : 'Draft', sc.status);
     top.append(left, badge);
     const windowInfo = document.createElement('div');
     windowInfo.className = 'muted';
@@ -412,8 +411,7 @@ function renderScenarios() {
     windowInfo.innerHTML = '';
     windowInfo.appendChild(windowText);
     if (active) {
-      const activeBadge = document.createElement('span');
-      activeBadge.innerHTML = pill('Active', 'active');
+      const activeBadge = pill('Active', 'active');
       activeBadge.style.marginLeft = '0.5rem';
       windowInfo.appendChild(activeBadge);
     }
@@ -809,7 +807,7 @@ function renderManagerScenarios() {
     const title = document.createElement('td');
     title.textContent = sc.title;
     const status = document.createElement('td');
-    status.innerHTML = pill(sc.status, sc.status);
+    status.appendChild(pill(sc.status, sc.status));
     const windowTd = document.createElement('td');
     windowTd.textContent = formatWindow(sc.starts_at, sc.ends_at);
     const actionTd = document.createElement('td');
