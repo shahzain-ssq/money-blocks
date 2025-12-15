@@ -9,22 +9,41 @@ $method = $_SERVER['REQUEST_METHOD'];
 $pdo = Database::getConnection();
 
 if ($method === 'GET') {
-    jsonResponse(['stocks' => StockService::listStocks((int)$user['institution_id'])]);
+    jsonResponse(['ok' => true, 'stocks' => StockService::listStocks((int)$user['institution_id'])]);
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 if ($method === 'POST') {
-    $pdo->prepare('INSERT INTO stocks (institution_id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())')
-        ->execute([
-            $user['institution_id'],
-            $input['ticker'] ?? '',
-            $input['name'] ?? '',
-            $input['initial_price'] ?? 0,
-            $input['total_limit'] ?? null,
-            $input['per_user_limit'] ?? null,
-            $input['per_user_short_limit'] ?? null,
-        ]);
-    jsonResponse(['status' => 'created', 'id' => $pdo->lastInsertId()]);
+    $ticker = trim($input['ticker'] ?? '');
+    $name = trim($input['name'] ?? '');
+    $initialPrice = (float)($input['initial_price'] ?? 0);
+    if ($ticker === '' || $name === '' || $initialPrice <= 0) {
+        jsonResponse(['error' => 'invalid_input'], 422);
+    }
+    $stmt = $pdo->prepare('INSERT INTO stocks (institution_id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())');
+    $stmt->execute([
+        $user['institution_id'],
+        $ticker,
+        $name,
+        $initialPrice,
+        $input['total_limit'] ?? null,
+        $input['per_user_limit'] ?? null,
+        $input['per_user_short_limit'] ?? null,
+    ]);
+    jsonResponse(['ok' => true, 'id' => $pdo->lastInsertId()]);
+}
+
+if ($method === 'DELETE') {
+    $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
+    if (!$id) {
+        jsonResponse(['error' => 'id_required'], 422);
+    }
+    $stmt = $pdo->prepare('UPDATE stocks SET active = 0, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+    $stmt->execute([$id, $user['institution_id']]);
+    if ($stmt->rowCount() === 0) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+    jsonResponse(['ok' => true]);
 }
 
 if ($method === 'PUT') {
@@ -32,11 +51,17 @@ if ($method === 'PUT') {
     if (!$id) {
         jsonResponse(['error' => 'id_required'], 422);
     }
+    $ticker = trim($input['ticker'] ?? '');
+    $name = trim($input['name'] ?? '');
+    $initialPrice = (float)($input['initial_price'] ?? 0);
+    if ($ticker === '' || $name === '' || $initialPrice <= 0) {
+        jsonResponse(['error' => 'invalid_input'], 422);
+    }
     $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?')
         ->execute([
-            $input['ticker'] ?? '',
-            $input['name'] ?? '',
-            $input['initial_price'] ?? 0,
+            $ticker,
+            $name,
+            $initialPrice,
             $input['total_limit'] ?? null,
             $input['per_user_limit'] ?? null,
             $input['per_user_short_limit'] ?? null,
@@ -44,7 +69,7 @@ if ($method === 'PUT') {
             $id,
             $user['institution_id'],
         ]);
-    jsonResponse(['status' => 'updated']);
+    jsonResponse(['ok' => true]);
 }
 
 jsonResponse(['error' => 'unsupported_method'], 405);

@@ -7,6 +7,20 @@ require_once __DIR__ . '/../src/BroadcastService.php';
 
 $user = Auth::requireAuth();
 requireManager($user);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+
+if ($method === 'GET') {
+    $stockId = (int)($_GET['stock_id'] ?? 0);
+    if ($stockId <= 0) {
+        jsonResponse(['error' => 'stock_required'], 422);
+    }
+    $stock = StockService::latestPrice($stockId, (int)$user['institution_id']);
+    if (!$stock) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+    jsonResponse(['ok' => true, 'stock' => $stock]);
+}
+
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $stockId = (int)($input['stock_id'] ?? 0);
 $price = (float)($input['price'] ?? 0);
@@ -24,4 +38,4 @@ BroadcastService::send([
     'stock_id' => $stockId,
     'price' => $price,
 ]);
-jsonResponse(['status' => 'updated']);
+jsonResponse(['ok' => true, 'price' => $price]);

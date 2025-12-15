@@ -11,19 +11,8 @@ requireManager($user);
 $method = $_SERVER['REQUEST_METHOD'];
 $pdo = Database::getConnection();
 
-if ($method === 'GET') {
-    jsonResponse(['scenarios' => CrisisService::managerList((int)$user['institution_id'])]);
-}
-
-$input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
-if ($method === 'POST') {
-    $title = trim($input['title'] ?? '');
-    if ($title === '') {
-        jsonResponse(['error' => 'title_required'], 422);
-    }
-
-    $startsAt = $input['starts_at'] ?? null;
-    $endsAt = $input['ends_at'] ?? null;
+function validateTimeRange($startsAt, $endsAt)
+{
     if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
         $startTimestamp = strtotime($startsAt);
         $endTimestamp = strtotime($endsAt);
@@ -31,6 +20,22 @@ if ($method === 'POST') {
             jsonResponse(['error' => 'invalid_time_range'], 422);
         }
     }
+}
+
+if ($method === 'GET') {
+    jsonResponse(['ok' => true, 'scenarios' => CrisisService::managerList((int)$user['institution_id'])]);
+}
+
+$input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+
+if ($method === 'POST') {
+    $title = trim($input['title'] ?? '');
+    if ($title === '') {
+        jsonResponse(['error' => 'title_required'], 422);
+    }
+    $startsAt = $input['starts_at'] ?? null;
+    $endsAt = $input['ends_at'] ?? null;
+    validateTimeRange($startsAt, $endsAt);
 
     $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, ends_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())')
         ->execute([
@@ -51,7 +56,7 @@ if ($method === 'POST') {
             'description' => $input['description'] ?? '',
         ]);
     }
-    jsonResponse(['status' => 'created', 'id' => $id]);
+    jsonResponse(['ok' => true, 'id' => $id]);
 }
 
 if ($method === 'PUT') {
@@ -67,12 +72,12 @@ if ($method === 'PUT') {
 
     $startsAt = $input['starts_at'] ?? null;
     $endsAt = $input['ends_at'] ?? null;
-    if ($startsAt !== null && $startsAt !== '' && $endsAt !== null && $endsAt !== '') {
-        $startTimestamp = strtotime($startsAt);
-        $endTimestamp = strtotime($endsAt);
-        if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
-            jsonResponse(['error' => 'invalid_time_range'], 422);
-        }
+    validateTimeRange($startsAt, $endsAt);
+
+    $check = $pdo->prepare('SELECT id FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
+    $check->execute([$id, $user['institution_id']]);
+    if (!$check->fetch()) {
+        jsonResponse(['error' => 'not_found'], 404);
     }
 
     $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
@@ -86,10 +91,6 @@ if ($method === 'PUT') {
         $user['institution_id'],
     ]);
 
-    if ($stmt->rowCount() === 0) {
-        jsonResponse(['error' => 'not_found'], 404);
-    }
-
     if (($input['status'] ?? '') === 'published') {
         BroadcastService::send([
             'type' => 'crisis_published',
@@ -99,7 +100,20 @@ if ($method === 'PUT') {
             'description' => $input['description'] ?? '',
         ]);
     }
-    jsonResponse(['status' => 'updated']);
+    jsonResponse(['ok' => true]);
+}
+
+if ($method === 'DELETE') {
+    $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
+    if (!$id) {
+        jsonResponse(['error' => 'id_required'], 422);
+    }
+    $stmt = $pdo->prepare('DELETE FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
+    $stmt->execute([$id, $user['institution_id']]);
+    if ($stmt->rowCount() === 0) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+    jsonResponse(['ok' => true]);
 }
 
 jsonResponse(['error' => 'unsupported_method'], 405);
