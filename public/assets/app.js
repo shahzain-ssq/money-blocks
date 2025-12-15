@@ -57,14 +57,19 @@ async function loadConfig() {
 
 function setConnectionStatus(connected) {
   const badge = document.getElementById('connectionBadge');
+  if (!badge) return;
   badge.innerHTML = `<span class="status-dot ${connected ? 'online' : 'offline'}"></span>${connected ? 'Live' : 'Disconnected'}`;
 }
 
 function applyUser() {
+  if (!state.user) return;
   const userMenu = document.getElementById('userMenu');
-  userMenu.textContent = `${state.user.username || state.user.email} (${state.user.role})`;
+  if (userMenu) {
+    userMenu.textContent = `${state.user.username || state.user.email} (${state.user.role})`;
+  }
   if (state.user.role === 'manager' || state.user.role === 'admin') {
-    document.getElementById('managerNav').style.display = 'block';
+    const managerNav = document.getElementById('managerNav');
+    if (managerNav) managerNav.style.display = 'block';
   }
 }
 
@@ -153,12 +158,8 @@ function findStock(id) {
 }
 
 async function refreshStocks() {
-  const res = await fetch('/api/stocks.php');
-  if (!res.ok) {
-    showToast('Failed to load stocks', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson('/api/stocks.php', {}, 'Failed to load stocks');
+  if (!data) return;
   state.stocks = data.stocks || [];
   renderLivePrices();
   renderTrade();
@@ -168,24 +169,16 @@ async function refreshStocks() {
 }
 
 async function refreshPortfolio() {
-  const res = await fetch('/api/portfolio.php');
-  if (!res.ok) {
-    showToast('Failed to load portfolio', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson('/api/portfolio.php', {}, 'Failed to load portfolio');
+  if (!data) return;
   state.portfolio = data;
   renderPortfolio();
   renderShorts();
 }
 
 async function refreshScenarios() {
-  const res = await fetch('/api/crisis.php');
-  if (!res.ok) {
-    showToast('Failed to load scenarios', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson('/api/crisis.php', {}, 'Failed to load scenarios');
+  if (!data) return;
   state.scenarios = data.scenarios || [];
   renderScenarios();
 }
@@ -533,7 +526,7 @@ async function openShort() {
   const stockId = Number(document.getElementById('shortSelect').value);
   const qty = Number(document.getElementById('shortQty').value);
   const duration = Number(document.getElementById('shortDuration').value);
-  if (!stockId || !qty || !duration) return showToast('Pick a stock, quantity, and duration', 'error');
+  if (!stockId || qty <= 0 || duration <= 0) return showToast('Pick a stock, quantity, and duration', 'error');
   const data = await fetchJson('/api/trades_short_open.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -615,12 +608,8 @@ function connectSocket() {
 
 async function loadManagerStocks() {
   if (!isManager()) return;
-  const res = await fetch('/api/manager_stocks.php');
-  if (!res.ok) {
-    showToast('Failed to load manager stocks', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson('/api/manager_stocks.php', {}, 'Failed to load manager stocks');
+  if (!data) return;
   state.managerData.stocks = data.stocks || [];
   renderManageStocks();
   renderPriceUpdater();
@@ -685,7 +674,15 @@ async function showPriceDetails(id) {
   const data = await fetchJson(`/api/manager_price.php?stock_id=${id}`, {}, 'Failed to load price');
   if (!data || data.error) return data ? showToast(data.error, 'error') : null;
   const stock = data.stock;
-  document.getElementById('priceDetails').textContent = `${stock.ticker} ${stock.name} — Current ${formatCurrency(stock.current_price || 0)}`;
+  const priceDetails = document.getElementById('priceDetails');
+  if (!stock || !priceDetails) {
+    if (!stock) showToast('Stock not found', 'error');
+    return;
+  }
+  const ticker = stock.ticker || '';
+  const name = stock.name || '';
+  const current = stock.current_price || 0;
+  priceDetails.textContent = `${ticker} ${name} — Current ${formatCurrency(current)}`;
 }
 
 async function updatePrice() {
@@ -706,12 +703,8 @@ async function updatePrice() {
 
 async function loadManagerScenarios() {
   if (!isManager()) return;
-  const res = await fetch('/api/manager_crisis.php');
-  if (!res.ok) {
-    showToast('Failed to load manager scenarios', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson('/api/manager_crisis.php', {}, 'Failed to load manager scenarios');
+  if (!data) return;
   state.managerData.scenarios = data.scenarios || [];
   renderManagerScenarios();
 }
@@ -771,12 +764,8 @@ function confirmDeleteScenario(id, title) {
 
 async function loadParticipants(query = '') {
   if (!isManager()) return;
-  const res = await fetch(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
-  if (!res.ok) {
-    showToast('Failed to load participants', 'error');
-    return;
-  }
-  const data = await res.json();
+  const data = await fetchJson(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+  if (!data) return;
   state.managerData.participants = data.participants || [];
   renderParticipants();
 }
@@ -836,6 +825,7 @@ function confirmDeleteParticipant(id, label) {
 
 function renderManageStocks() {
   const tbody = document.querySelector('#manageStocksTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   const stocks = state.managerData.stocks.length ? state.managerData.stocks : state.stocks;
   stocks.forEach((s) => {
@@ -879,6 +869,7 @@ function renderPriceUpdater() {
 
 function renderManagerScenarios() {
   const tbody = document.querySelector('#scenarioTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.managerData.scenarios || []).forEach((sc) => {
     const tr = document.createElement('tr');
@@ -911,6 +902,7 @@ function renderManagerScenarios() {
 
 function renderParticipants() {
   const tbody = document.querySelector('#participantsTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.managerData.participants || []).forEach((p) => {
     const tr = document.createElement('tr');
