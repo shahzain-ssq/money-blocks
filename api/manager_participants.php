@@ -35,8 +35,13 @@ if ($method === 'POST') {
         jsonResponse(['error' => 'invalid_email'], 422);
     }
 
-    $check = $pdo->prepare('SELECT id FROM users WHERE institution_id = ? AND (email = ? OR username = ?) LIMIT 1');
-    $check->execute([$user['institution_id'], $email, $username]);
+    if ($email !== '') {
+        $check = $pdo->prepare('SELECT id FROM users WHERE institution_id = ? AND (email = ? OR username = ?) LIMIT 1');
+        $check->execute([$user['institution_id'], $email, $username]);
+    } else {
+        $check = $pdo->prepare('SELECT id FROM users WHERE institution_id = ? AND username = ? LIMIT 1');
+        $check->execute([$user['institution_id'], $username]);
+    }
     if ($check->fetch()) {
         jsonResponse(['error' => 'user_exists'], 409);
     }

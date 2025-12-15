@@ -1,5 +1,7 @@
 import { showToast, openModal, toggleSection, formatCurrency, formatChange, pill } from './components.js';
 
+const STOCK_HISTORY_LIMIT = 24;
+
 const state = {
   config: null,
   user: null,
@@ -9,7 +11,39 @@ const state = {
   managerData: { stocks: [], scenarios: [], participants: [], priceOptions: [] },
   ws: null,
   reconnectDelay: 1000,
+  reconnectAttempts: 0,
+  maxReconnectAttempts: 8,
 };
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function fetchJson(url, options = {}, errorMessage = 'Request failed') {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      showToast(errorMessage, 'error');
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.error(errorMessage, err);
+    showToast(errorMessage, 'error');
+    return null;
+  }
+}
+
+let portfolioRefreshTimer;
+function debouncePortfolioRefresh(callback, delay = 300) {
+  clearTimeout(portfolioRefreshTimer);
+  portfolioRefreshTimer = setTimeout(callback, delay);
+}
 
 function isManager() {
   return state.user && (state.user.role === 'manager' || state.user.role === 'admin');
@@ -25,14 +59,23 @@ async function loadConfig() {
 
 function setConnectionStatus(connected) {
   const badge = document.getElementById('connectionBadge');
-  badge.innerHTML = `<span class="status-dot ${connected ? 'online' : 'offline'}"></span>${connected ? 'Live' : 'Disconnected'}`;
+  if (!badge) return;
+  badge.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = `status-dot ${connected ? 'online' : 'offline'}`;
+  badge.appendChild(dot);
+  badge.appendChild(document.createTextNode(connected ? 'Live' : 'Disconnected'));
 }
 
 function applyUser() {
+  if (!state.user) return;
   const userMenu = document.getElementById('userMenu');
-  userMenu.textContent = `${state.user.username || state.user.email} (${state.user.role})`;
+  if (userMenu) {
+    userMenu.textContent = `${state.user.username || state.user.email} (${state.user.role})`;
+  }
   if (state.user.role === 'manager' || state.user.role === 'admin') {
-    document.getElementById('managerNav').style.display = 'block';
+    const managerNav = document.getElementById('managerNav');
+    if (managerNav) managerNav.style.display = 'block';
   }
 }
 
@@ -48,46 +91,72 @@ function setupNav() {
   const overlay = document.querySelector('.sidebar-overlay');
   const sidebar = document.querySelector('.sidebar');
   const toggle = document.querySelector('.sidebar-toggle');
+  if (!overlay || !sidebar || !toggle) {
+    return;
+  }
+  const setOverlayVisible = (open) => {
+    sidebar.classList.toggle('open', open);
+    overlay.classList.toggle('show', open);
+    overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+  };
   toggle.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('show');
+    const open = !sidebar.classList.contains('open');
+    setOverlayVisible(open);
   });
   overlay.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('show');
+    setOverlayVisible(false);
   });
 }
 
 function route() {
   const hash = window.location.hash || '#/portfolio';
-  const page = hash.replace('#/', '') || 'portfolio';
-  toggleSection(page);
-  document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${page}"]`)?.textContent || 'Portal';
-  if (page === 'live') renderLivePrices();
-  if (page === 'trade') renderTrade();
-  if (page === 'portfolio') renderPortfolio();
-  if (page === 'shorts') renderShorts();
-  if (page === 'scenarios') renderScenarios();
-  if (page === 'manage-stocks') renderManageStocks();
-  if (page === 'manage-scenarios') renderManagerScenarios();
-  if (page === 'participants') renderParticipants();
-  if (page === 'update-price') renderPriceUpdater();
+  const raw = hash.replace('#/', '') || 'portfolio';
+  const page = raw.split('?')[0];
+  const managerRoutes = ['manage-stocks', 'manage-scenarios', 'participants', 'update-price'];
+  if (managerRoutes.includes(page) && !isManager()) {
+    window.location.hash = '#/portfolio';
+    return;
+  }
+  const allowedRoutes = ['live', 'trade', 'portfolio', 'shorts', 'activity', 'scenarios', 'settings', ...managerRoutes];
+  const target = allowedRoutes.includes(page) ? page : 'portfolio';
+  if (target !== page) {
+    window.location.hash = '#/portfolio';
+  }
+  toggleSection(target);
+  document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${target}"]`)?.textContent || 'Portal';
+  if (target === 'live') renderLivePrices();
+  if (target === 'trade') renderTrade();
+  if (target === 'portfolio') renderPortfolio();
+  if (target === 'shorts') renderShorts();
+  if (target === 'scenarios') renderScenarios();
+  if (target === 'manage-stocks') renderManageStocks();
+  if (target === 'manage-scenarios') renderManagerScenarios();
+  if (target === 'participants') renderParticipants();
+  if (target === 'update-price') renderPriceUpdater();
 }
 
 async function init() {
   try {
     await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
+    if (!meRes.ok) {
+      window.location = '/index.html';
+      return;
+    }
     const me = await meRes.json();
-    if (!me.user) return (window.location = '/public/index.html');
+    if (!me.user) {
+      window.location = '/index.html';
+      return;
+    }
     state.user = me.user;
     applyUser();
     setupNav();
     bindForms();
-    await Promise.all([refreshStocks(), refreshPortfolio(), refreshScenarios()]);
+    const promises = [refreshStocks(), refreshPortfolio(), refreshScenarios()];
     if (isManager()) {
-      await refreshManagerData();
+      promises.push(refreshManagerData());
     }
+    await Promise.all(promises);
     connectSocket();
     route();
     window.addEventListener('hashchange', route);
@@ -102,8 +171,11 @@ function findStock(id) {
 }
 
 async function refreshStocks() {
-  const res = await fetch('/api/stocks.php');
-  const data = await res.json();
+  const data = await fetchJson('/api/stocks.php', {}, 'Failed to load stocks');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.stocks = data.stocks || [];
   renderLivePrices();
   renderTrade();
@@ -113,16 +185,22 @@ async function refreshStocks() {
 }
 
 async function refreshPortfolio() {
-  const res = await fetch('/api/portfolio.php');
-  const data = await res.json();
+  const data = await fetchJson('/api/portfolio.php', {}, 'Failed to load portfolio');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.portfolio = data;
   renderPortfolio();
   renderShorts();
 }
 
 async function refreshScenarios() {
-  const res = await fetch('/api/crisis.php');
-  const data = await res.json();
+  const data = await fetchJson('/api/crisis.php', {}, 'Failed to load scenarios');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.scenarios = data.scenarios || [];
   renderScenarios();
 }
@@ -135,6 +213,7 @@ async function refreshManagerData() {
 function renderPortfolio() {
   if (!state.portfolio) return;
   const summary = document.getElementById('portfolioSummary');
+  if (!summary) return;
   summary.innerHTML = '';
   const stats = [
     { label: 'Cash', value: formatCurrency(state.portfolio.portfolio.cash_balance || 0) },
@@ -145,56 +224,104 @@ function renderPortfolio() {
   stats.forEach((s) => {
     const card = document.createElement('div');
     card.className = 'card stat';
-    card.innerHTML = `<div class="muted">${s.label}</div><div class="value">${s.value}</div>`;
+    const label = document.createElement('div');
+    label.className = 'muted';
+    label.textContent = s.label;
+    const val = document.createElement('div');
+    val.className = 'value';
+    val.textContent = s.value;
+    card.append(label, val);
     summary.appendChild(card);
   });
-  document.getElementById('portfolioValuation').textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  const valuation = document.getElementById('portfolioValuation');
+  if (valuation) {
+    valuation.textContent = `Last updated ${new Date().toLocaleTimeString()}`;
+  }
 
   const tbody = document.querySelector('#positionsTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.portfolio.positions || []).forEach((p) => {
     const tr = document.createElement('tr');
     const pl = Number(p.unrealized_pl || 0);
-    tr.innerHTML = `
-      <td>${p.ticker}</td>
-      <td>${p.quantity}</td>
-      <td>${formatCurrency(p.avg_price)}</td>
-      <td>${formatCurrency(p.current_price || p.avg_price)}</td>
-      <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl)}</td>
-      <td>${formatCurrency(p.position_value)}</td>
-      <td class="table-actions">
-        <button class="btn ghost inline" data-action="buy" data-id="${p.stock_id}">Buy</button>
-        <button class="btn secondary inline" data-action="sell" data-id="${p.stock_id}">Sell</button>
-      </td>`;
+    const cells = [
+      p.ticker,
+      Number(p.quantity ?? 0),
+      formatCurrency(p.avg_price),
+      formatCurrency(p.current_price || p.avg_price),
+      formatCurrency(pl),
+      formatCurrency(p.position_value),
+    ];
+    cells.forEach((val, idx) => {
+      const td = document.createElement('td');
+      if (idx === 4) td.className = pl >= 0 ? 'positive' : 'negative';
+      td.textContent = typeof val === 'number' ? val : String(val);
+      tr.appendChild(td);
+    });
+    const actions = document.createElement('td');
+    actions.className = 'table-actions';
+    const buyBtn = document.createElement('button');
+    buyBtn.className = 'btn ghost inline';
+    buyBtn.textContent = 'Buy';
+    buyBtn.dataset.action = 'buy';
+    buyBtn.dataset.id = p.stock_id;
+    const sellBtn = document.createElement('button');
+    sellBtn.className = 'btn secondary inline';
+    sellBtn.textContent = 'Sell';
+    sellBtn.dataset.action = 'sell';
+    sellBtn.dataset.id = p.stock_id;
+    actions.append(buyBtn, sellBtn);
+    tr.appendChild(actions);
     tbody.appendChild(tr);
   });
   tbody.querySelectorAll('button').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;
-      document.getElementById('tradeSelect').value = id;
+      const tradeSelect = document.getElementById('tradeSelect');
+      if (tradeSelect) tradeSelect.value = id;
       window.location.hash = '#/trade';
       renderTrade();
-      if (btn.dataset.action === 'buy') document.getElementById('buyQty').focus();
-      if (btn.dataset.action === 'sell') document.getElementById('sellQty').focus();
+      if (btn.dataset.action === 'buy') document.getElementById('buyQty')?.focus();
+      if (btn.dataset.action === 'sell') document.getElementById('sellQty')?.focus();
     });
   });
 }
 
 function renderLivePrices() {
   const tbody = document.querySelector('#liveTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
-  const q = document.getElementById('liveSearch').value?.toLowerCase() || '';
+  const search = document.getElementById('liveSearch');
+  const q = search?.value?.toLowerCase() || '';
   const filtered = state.stocks.filter((s) => `${s.ticker} ${s.name}`.toLowerCase().includes(q));
   filtered.forEach((s) => {
     const change = Number(s.change || 0);
     const pct = Number(s.change_pct || 0);
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${s.ticker}</td>
-      <td>${s.name}</td>
-      <td>${formatCurrency(s.current_price || s.initial_price)}</td>
-      <td>${formatChange(change)} <span class="muted">(${pct.toFixed(2)}%)</span></td>
-      <td class="muted">${s.updated_at ? new Date(s.updated_at).toLocaleTimeString() : '-'}</td>`;
+    const tds = [
+      s.ticker,
+      s.name,
+      formatCurrency(s.current_price || s.initial_price),
+      null,
+      s.updated_at ? new Date(s.updated_at).toLocaleTimeString() : '-',
+    ];
+    tds.forEach((val, idx) => {
+      const td = document.createElement('td');
+      if (idx === 3) {
+        const changeSpan = document.createElement('span');
+        const changeMeta = formatChange(change);
+        changeSpan.textContent = changeMeta.text;
+        changeSpan.className = changeMeta.className;
+        const pctSpan = document.createElement('span');
+        pctSpan.className = 'muted';
+        pctSpan.textContent = ` (${pct.toFixed(2)}%)`;
+        td.append(changeSpan, pctSpan);
+      } else {
+        td.textContent = String(val);
+        if (idx === 4) td.className = 'muted';
+      }
+      tr.appendChild(td);
+    });
     tr.addEventListener('click', () => openStockDetail(s));
     tbody.appendChild(tr);
   });
@@ -202,13 +329,31 @@ function renderLivePrices() {
 }
 
 async function openStockDetail(stock) {
-  const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=24`);
-  const history = await historyRes.json();
-  const bars = (history.prices || []).map((p) => `<span style="height:${Math.max(4, p.price)}px"></span>`).join('');
+  let prices = [];
+  try {
+    const historyRes = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=${STOCK_HISTORY_LIMIT}`);
+    if (!historyRes.ok) throw new Error('history request failed');
+    const history = await historyRes.json();
+    prices = (history.prices || [])
+      .map((p) => Number(p.price))
+      .filter((v) => Number.isFinite(v));
+  } catch (err) {
+    console.error('Failed to load stock history', err);
+    showToast('Unable to load stock history', 'error');
+  }
+  const minP = prices.length ? Math.min(...prices) : 0;
+  const maxP = prices.length ? Math.max(...prices) : 1;
+  const range = maxP - minP || 1;
+  const bars = prices.length
+    ? prices.map((price) => {
+        const height = Math.max(4, ((price - minP) / range) * 60);
+        return `<span style="height:${height}px"></span>`;
+      }).join('')
+    : '<span class="empty">No history</span>';
   openModal({
-    title: `${stock.ticker} · ${formatCurrency(stock.current_price || stock.initial_price)}`,
+    title: `${escapeHtml(stock.ticker)} · ${formatCurrency(stock.current_price || stock.initial_price)}`,
     body: `
-      <p class="muted">${stock.name}</p>
+      <p class="muted">${escapeHtml(stock.name)}</p>
       <div class="sparkline">${bars}</div>
       <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
         <button class="btn inline" id="quickBuy">Trade</button>
@@ -217,54 +362,91 @@ async function openStockDetail(stock) {
     confirmText: 'Close',
     cancelText: 'Dismiss',
   });
-  setTimeout(() => {
-    const btn = document.getElementById('quickBuy');
-    if (btn) {
-      btn.onclick = () => {
-        window.location.hash = '#/trade';
-        document.getElementById('tradeSelect').value = stock.id;
+  const btn = document.getElementById('quickBuy');
+  if (btn) {
+    btn.onclick = () => {
+      window.location.hash = '#/trade';
+      const tradeSelect = document.getElementById('tradeSelect');
+      if (tradeSelect) {
+        tradeSelect.value = stock.id;
         renderTrade();
-      };
-    }
-  }, 50);
+      }
+    };
+  }
 }
 
 function renderTrade() {
   const select = document.getElementById('tradeSelect');
-  select.innerHTML = '<option value="">Select stock</option>' + state.stocks.map((s) => `<option value="${s.id}">${s.ticker} · ${s.name}</option>`).join('');
+  if (!select) return;
+  select.innerHTML = '';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'Select stock';
+  select.appendChild(defaultOpt);
+  state.stocks.forEach((s) => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.ticker} · ${s.name}`;
+    select.appendChild(opt);
+  });
   const search = document.getElementById('tradeSearch');
-  if (search.value) {
+  if (search?.value) {
     const match = state.stocks.find((s) => s.ticker.toLowerCase() === search.value.toLowerCase());
     if (match) select.value = match.id;
   }
   const selected = findStock(select.value);
   const details = document.getElementById('tradeDetails');
+  if (!details) return;
   if (!selected) {
     details.textContent = 'Search for a stock to view details.';
     return;
   }
   const position = (state.portfolio?.positions || []).find((p) => Number(p.stock_id) === Number(selected.id));
-  details.innerHTML = `
-    <strong>${selected.ticker}</strong> ${selected.name} — Current ${formatCurrency(selected.current_price || selected.initial_price)}<br />
-    Position: ${position ? `${position.quantity} @ ${formatCurrency(position.avg_price)}` : 'No holdings'}
-  `;
+  const info = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = selected.ticker;
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = ` ${selected.name} — Current ${formatCurrency(selected.current_price || selected.initial_price)}`;
+  const positionLine = document.createElement('div');
+  positionLine.textContent = `Position: ${position ? `${position.quantity} @ ${formatCurrency(position.avg_price)}` : 'No holdings'}`;
+  info.append(title, nameSpan, document.createElement('br'), positionLine);
+  details.innerHTML = '';
+  details.appendChild(info);
 }
 
 function renderShorts() {
   const select = document.getElementById('shortSelect');
-  select.innerHTML = '<option value="">Select stock</option>' + state.stocks.map((s) => `<option value="${s.id}">${s.ticker}</option>`).join('');
   const tbody = document.querySelector('#shortsTable tbody');
+  if (!select || !tbody) return;
+  select.innerHTML = '';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'Select stock';
+  select.appendChild(defaultOpt);
+  state.stocks.forEach((s) => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.ticker;
+    select.appendChild(opt);
+  });
   tbody.innerHTML = '';
   (state.portfolio?.shorts || []).forEach((sh) => {
     const tr = document.createElement('tr');
     const pl = Number(sh.pl || 0);
-    tr.innerHTML = `
-      <td>${sh.ticker}</td>
-      <td>${sh.quantity}</td>
-      <td>${formatCurrency(sh.open_price)}</td>
-      <td>${formatCurrency(sh.current_price || sh.open_price)}</td>
-      <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl)}</td>
-      <td>${sh.expires_at || '-'}</td>`;
+    const cells = [
+      sh.ticker,
+      Number(sh.quantity ?? 0),
+      formatCurrency(sh.open_price),
+      formatCurrency(sh.current_price || sh.open_price),
+      formatCurrency(pl),
+      sh.expires_at || '-',
+    ];
+    cells.forEach((val, idx) => {
+      const td = document.createElement('td');
+      if (idx === 4) td.className = pl >= 0 ? 'positive' : 'negative';
+      td.textContent = typeof val === 'number' ? val : String(val);
+      tr.appendChild(td);
+    });
     tbody.appendChild(tr);
   });
   if (!state.portfolio?.shorts?.length) {
@@ -274,6 +456,7 @@ function renderShorts() {
 
 function renderScenarios() {
   const list = document.getElementById('scenarioList');
+  if (!list) return;
   list.innerHTML = '';
   if (!state.scenarios.length) {
     list.innerHTML = '<div class="card">No crisis scenarios yet.</div>';
@@ -283,16 +466,32 @@ function renderScenarios() {
     const card = document.createElement('div');
     card.className = 'card';
     const active = sc.starts_at && sc.ends_at ? isActive(sc.starts_at, sc.ends_at) : false;
-    card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <h3>${sc.title}</h3>
-          <div class="muted">${sc.description || ''}</div>
-        </div>
-        ${pill(sc.status === 'published' ? 'Published' : 'Draft', sc.status)}
-      </div>
-      <div class="muted" style="margin-top:0.5rem;">${formatWindow(sc.starts_at, sc.ends_at)} ${active ? pill('Active', 'active') : ''}</div>
-    `;
+    const top = document.createElement('div');
+    top.style.display = 'flex';
+    top.style.justifyContent = 'space-between';
+    top.style.alignItems = 'center';
+    const left = document.createElement('div');
+    const title = document.createElement('h3');
+    title.textContent = sc.title;
+    const desc = document.createElement('div');
+    desc.className = 'muted';
+    desc.textContent = sc.description || '';
+    left.append(title, desc);
+    const badge = pill(sc.status === 'published' ? 'Published' : 'Draft', sc.status);
+    top.append(left, badge);
+    const windowInfo = document.createElement('div');
+    windowInfo.className = 'muted';
+    windowInfo.style.marginTop = '0.5rem';
+    const windowText = document.createElement('span');
+    windowText.textContent = formatWindow(sc.starts_at, sc.ends_at);
+    windowInfo.innerHTML = '';
+    windowInfo.appendChild(windowText);
+    if (active) {
+      const activeBadge = pill('Active', 'active');
+      activeBadge.style.marginLeft = '0.5rem';
+      windowInfo.appendChild(activeBadge);
+    }
+    card.append(top, windowInfo);
     list.appendChild(card);
   });
 }
@@ -308,22 +507,34 @@ function isActive(start, end) {
 }
 
 function bindForms() {
-  document.getElementById('liveSearch').addEventListener('input', renderLivePrices);
-  document.getElementById('tradeSelect').addEventListener('change', renderTrade);
-  document.getElementById('tradeSearch').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term) || s.name.toLowerCase().includes(term));
-    if (match) document.getElementById('tradeSelect').value = match.id;
-    renderTrade();
-  });
-  document.getElementById('buyBtn').onclick = () => handleTrade('buy');
-  document.getElementById('sellBtn').onclick = () => handleTrade('sell');
-  document.getElementById('shortOpenBtn').onclick = openShort;
-  document.getElementById('shortSearch').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term));
-    if (match) document.getElementById('shortSelect').value = match.id;
-  });
+  const liveSearch = document.getElementById('liveSearch');
+  if (liveSearch) liveSearch.addEventListener('input', renderLivePrices);
+  const tradeSelect = document.getElementById('tradeSelect');
+  if (tradeSelect) tradeSelect.addEventListener('change', renderTrade);
+  const tradeSearch = document.getElementById('tradeSearch');
+  if (tradeSearch) {
+    tradeSearch.addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term) || s.name.toLowerCase().includes(term));
+      const tradeSelectEl = document.getElementById('tradeSelect');
+      if (match && tradeSelectEl) tradeSelectEl.value = match.id;
+      renderTrade();
+    });
+  }
+  const buyBtn = document.getElementById('buyBtn');
+  if (buyBtn) buyBtn.onclick = () => handleTrade('buy');
+  const sellBtn = document.getElementById('sellBtn');
+  if (sellBtn) sellBtn.onclick = () => handleTrade('sell');
+  const shortOpenBtn = document.getElementById('shortOpenBtn');
+  if (shortOpenBtn) shortOpenBtn.onclick = openShort;
+  const shortSearch = document.getElementById('shortSearch');
+  if (shortSearch) {
+    shortSearch.addEventListener('input', (e) => {
+      const term = e.target.value.toLowerCase();
+      const match = state.stocks.find((s) => s.ticker.toLowerCase().startsWith(term));
+      if (match) document.getElementById('shortSelect').value = match.id;
+    });
+  }
   const createStockBtn = document.getElementById('createStockBtn');
   if (createStockBtn) createStockBtn.onclick = createStock;
   const updatePriceBtn = document.getElementById('updatePriceBtn');
@@ -338,24 +549,29 @@ function bindForms() {
   if (participantSearch) participantSearch.addEventListener('input', (e) => loadParticipants(e.target.value));
   const createParticipantBtn = document.getElementById('createParticipantBtn');
   if (createParticipantBtn) createParticipantBtn.onclick = createParticipant;
-  document.getElementById('logoutBtn').onclick = async () => {
-    await fetch('/api/auth_login.php', { method: 'DELETE' });
-    window.location = '/public/index.html';
-  };
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = async () => {
+      await fetch('/api/auth_login.php', { method: 'DELETE' });
+      window.location = '/index.html';
+    };
+  }
 }
 
 async function handleTrade(type) {
   const select = document.getElementById('tradeSelect');
   const qtyInput = type === 'buy' ? document.getElementById('buyQty') : document.getElementById('sellQty');
   const qty = Number(qtyInput.value);
-  if (!select.value || qty <= 0) return showToast('Select a stock and enter quantity', 'error');
+  if (!select.value || !Number.isFinite(qty) || qty <= 0) {
+    return showToast('Select a stock and enter a valid quantity', 'error');
+  }
   const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-  const res = await fetch(endpoint, {
+  const data = await fetchJson(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: Number(select.value), quantity: qty }),
-  });
-  const data = await res.json();
+  }, 'Trade failed');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast(data.message || 'Trade placed');
   qtyInput.value = '';
@@ -366,13 +582,15 @@ async function openShort() {
   const stockId = Number(document.getElementById('shortSelect').value);
   const qty = Number(document.getElementById('shortQty').value);
   const duration = Number(document.getElementById('shortDuration').value);
-  if (!stockId || !qty || !duration) return showToast('Pick a stock, quantity, and duration', 'error');
-  const res = await fetch('/api/trades_short_open.php', {
+  if (!stockId || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    return showToast('Pick a stock, quantity, and duration', 'error');
+  }
+  const data = await fetchJson('/api/trades_short_open.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: stockId, quantity: qty, duration_seconds: duration }),
-  });
-  const data = await res.json();
+  }, 'Failed to open short');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Short opened');
   document.getElementById('shortQty').value = '';
@@ -381,42 +599,100 @@ async function openShort() {
 
 function connectSocket() {
   if (!state.config?.wsPublicUrl) return;
+  if (!state.user?.institution_id) {
+    console.warn('No institution_id, skipping WebSocket connection');
+    return;
+  }
+  if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) {
+    try {
+      state.ws.close();
+    } catch (err) {
+      console.warn('Error closing previous socket', err);
+    }
+  }
   const url = new URL(state.config.wsPublicUrl);
   url.searchParams.set('institution_id', state.user.institution_id);
   state.ws = new WebSocket(url.toString());
   state.ws.onopen = () => {
     setConnectionStatus(true);
     state.reconnectDelay = 1000;
+    state.reconnectAttempts = 0;
   };
   state.ws.onmessage = (ev) => {
-    const msg = JSON.parse(ev.data);
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch (err) {
+      console.warn('Bad WS message', err);
+      return;
+    }
     if (msg.type === 'price_update') {
-      const stock = findStock(msg.stock_id);
-      if (stock) {
-        stock.previous_price = stock.current_price;
-        stock.current_price = msg.price;
-        stock.updated_at = new Date().toISOString();
+      const stockId = Number(msg.stock_id);
+      const price = Number(msg.price);
+      if (!Number.isFinite(stockId) || stockId <= 0) {
+        console.warn('Invalid stock id in price_update');
+        return;
       }
+      const stock = findStock(stockId);
+      if (!stock) {
+        console.warn('Unknown stock in price_update', stockId);
+        return;
+      }
+      if (!Number.isFinite(price) || price <= 0) {
+        console.warn('Invalid price in price_update');
+        return;
+      }
+      stock.previous_price = stock.current_price;
+      stock.current_price = price;
+      stock.updated_at = new Date().toISOString();
       renderLivePrices();
       renderTrade();
-      refreshPortfolio();
+      debouncePortfolioRefresh(refreshPortfolio);
     }
     if (msg.type === 'crisis_published') {
+      if (!msg.title || typeof msg.title !== 'string') {
+        console.warn('Invalid crisis_published message', msg);
+        return;
+      }
       showToast(`Scenario published: ${msg.title}`);
       refreshScenarios();
     }
   };
   state.ws.onclose = () => {
     setConnectionStatus(false);
-    setTimeout(connectSocket, state.reconnectDelay);
+    state.ws = null;
+    state.reconnectAttempts += 1;
+    if (state.reconnectAttempts > state.maxReconnectAttempts) {
+      console.warn('Max WebSocket reconnect attempts reached');
+      return;
+    }
+    setTimeout(async () => {
+      try {
+        const meRes = await fetch('/api/auth_me.php');
+        if (meRes.ok) {
+          const me = await meRes.json();
+          if (me.user) {
+            connectSocket();
+            return;
+          }
+        }
+        console.warn('User not authenticated, stopping WebSocket reconnection');
+      } catch (err) {
+        console.warn('Auth check failed, stopping reconnection', err);
+      }
+    }, state.reconnectDelay);
     state.reconnectDelay = Math.min(10000, state.reconnectDelay * 2);
   };
+  state.ws.onerror = (err) => console.warn('WebSocket error', err);
 }
 
 async function loadManagerStocks() {
   if (!isManager()) return;
-  const res = await fetch('/api/manager_stocks.php');
-  const data = await res.json();
+  const data = await fetchJson('/api/manager_stocks.php', {}, 'Failed to load manager stocks');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.stocks = data.stocks || [];
   renderManageStocks();
   renderPriceUpdater();
@@ -426,13 +702,15 @@ async function createStock() {
   const ticker = document.getElementById('newTicker').value.trim();
   const name = document.getElementById('newName').value.trim();
   const price = Number(document.getElementById('newPrice').value);
-  if (!ticker || !name || price <= 0) return showToast('Provide ticker, name, and price', 'error');
-  const res = await fetch('/api/manager_stocks.php', {
+  if (!ticker || !name || !Number.isFinite(price) || price <= 0) {
+    return showToast('Provide ticker, name, and price', 'error');
+  }
+  const data = await fetchJson('/api/manager_stocks.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ticker, name, initial_price: price }),
-  });
-  const data = await res.json();
+  }, 'Failed to create stock');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Stock created');
   document.getElementById('newTicker').value = '';
@@ -443,12 +721,12 @@ async function createStock() {
 
 function confirmDeleteStock(id, ticker) {
   openModal({
-    title: `Delete ${ticker}?`,
-    body: `<p>This will deactivate ${ticker} for trading.</p>`,
+    title: `Delete ${escapeHtml(ticker)}?`,
+    body: `<p>This will deactivate ${escapeHtml(ticker)} for trading.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_stocks.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_stocks.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete stock');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Stock removed');
       await Promise.all([refreshStocks(), loadManagerStocks()]);
@@ -457,17 +735,20 @@ function confirmDeleteStock(id, ticker) {
 }
 
 let priceSearchTimer;
+let lastPriceSearchTerm = '';
 async function handlePriceSearch(e) {
   const term = e.target.value.trim();
+  lastPriceSearchTerm = term;
   clearTimeout(priceSearchTimer);
   priceSearchTimer = setTimeout(async () => {
+    if (term !== lastPriceSearchTerm) return;
     if (!term) {
       state.managerData.priceOptions = [];
       renderPriceUpdater();
       return;
     }
-    const res = await fetch(`/api/manager_stocks_search.php?q=${encodeURIComponent(term)}`);
-    const data = await res.json();
+    const data = await fetchJson(`/api/manager_stocks_search.php?q=${encodeURIComponent(term)}`, {}, 'Price search failed');
+    if (!data) return;
     state.managerData.priceOptions = data.stocks || [];
     renderPriceUpdater();
   }, 200);
@@ -478,23 +759,37 @@ async function showPriceDetails(id) {
     document.getElementById('priceDetails').textContent = '';
     return;
   }
-  const res = await fetch(`/api/manager_price.php?stock_id=${id}`);
-  const data = await res.json();
-  if (data.error) return showToast(data.error, 'error');
+  const data = await fetchJson(`/api/manager_price.php?stock_id=${id}`, {}, 'Failed to load price');
+  const priceDetails = document.getElementById('priceDetails');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    if (priceDetails) priceDetails.textContent = '';
+    return;
+  }
   const stock = data.stock;
-  document.getElementById('priceDetails').textContent = `${stock.ticker} ${stock.name} — Current ${formatCurrency(stock.current_price || 0)}`;
+  if (!stock || !priceDetails) {
+    if (priceDetails) priceDetails.textContent = 'Stock unavailable';
+    if (!stock) showToast('Stock not found', 'error');
+    return;
+  }
+  const ticker = stock.ticker || '';
+  const name = stock.name || '';
+  const current = stock.current_price || 0;
+  priceDetails.textContent = `${ticker} ${name} — Current ${formatCurrency(current)}`;
 }
 
 async function updatePrice() {
   const stockId = Number(document.getElementById('priceSelect').value);
   const price = Number(document.getElementById('newPriceValue').value);
-  if (!stockId || price <= 0) return showToast('Choose a stock and a valid price', 'error');
-  const res = await fetch('/api/manager_price.php', {
+  if (!stockId || !Number.isFinite(price) || price <= 0) {
+    return showToast('Choose a stock and a valid price', 'error');
+  }
+  const data = await fetchJson('/api/manager_price.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ stock_id: stockId, price }),
-  });
-  const data = await res.json();
+  }, 'Failed to update price');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Price updated');
   document.getElementById('newPriceValue').value = '';
@@ -503,8 +798,11 @@ async function updatePrice() {
 
 async function loadManagerScenarios() {
   if (!isManager()) return;
-  const res = await fetch('/api/manager_crisis.php');
-  const data = await res.json();
+  const data = await fetchJson('/api/manager_crisis.php', {}, 'Failed to load manager scenarios');
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.scenarios = data.scenarios || [];
   renderManagerScenarios();
 }
@@ -518,12 +816,12 @@ async function createScenario() {
     ends_at: document.getElementById('scenarioEnd').value || null,
   };
   if (!payload.title) return showToast('Scenario title required', 'error');
-  const res = await fetch('/api/manager_crisis.php', {
+  const data = await fetchJson('/api/manager_crisis.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  });
-  const data = await res.json();
+  }, 'Failed to save scenario');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   showToast('Scenario saved');
   await Promise.all([loadManagerScenarios(), refreshScenarios()]);
@@ -531,7 +829,7 @@ async function createScenario() {
 
 async function toggleScenarioStatus(scenario) {
   const next = scenario.status === 'published' ? 'draft' : 'published';
-  const res = await fetch(`/api/manager_crisis.php?id=${scenario.id}`, {
+  const data = await fetchJson(`/api/manager_crisis.php?id=${scenario.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -541,20 +839,20 @@ async function toggleScenarioStatus(scenario) {
       starts_at: scenario.starts_at,
       ends_at: scenario.ends_at,
     }),
-  });
-  const data = await res.json();
+  }, 'Failed to update scenario');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
   await Promise.all([loadManagerScenarios(), refreshScenarios()]);
 }
 
 function confirmDeleteScenario(id, title) {
   openModal({
-    title: `Delete ${title}?`,
-    body: `<p>Are you sure you want to delete ${title}? This cannot be undone.</p>`,
+    title: `Delete ${escapeHtml(title)}?`,
+    body: `<p>Are you sure you want to delete ${escapeHtml(title)}? This cannot be undone.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_crisis.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_crisis.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete scenario');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Scenario deleted');
       await Promise.all([loadManagerScenarios(), refreshScenarios()]);
@@ -564,8 +862,11 @@ function confirmDeleteScenario(id, title) {
 
 async function loadParticipants(query = '') {
   if (!isManager()) return;
-  const res = await fetch(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
-  const data = await res.json();
+  const data = await fetchJson(`/api/manager_participants.php${query ? `?q=${encodeURIComponent(query)}` : ''}`);
+  if (!data || data.error) {
+    if (data?.error) showToast(data.error, 'error');
+    return;
+  }
   state.managerData.participants = data.participants || [];
   renderParticipants();
 }
@@ -574,14 +875,44 @@ async function createParticipant() {
   const username = document.getElementById('participantUsername').value.trim();
   const email = document.getElementById('participantEmail').value.trim();
   if (!username && !email) return showToast('Enter a username or email', 'error');
-  const res = await fetch('/api/manager_participants.php', {
+  const data = await fetchJson('/api/manager_participants.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email }),
-  });
-  const data = await res.json();
+  }, 'Failed to create participant');
+  if (!data) return;
   if (data.error) return showToast(data.error, 'error');
-  showToast(`Participant created. Temp password: ${data.temp_password}`);
+  if (!data.temp_password) {
+    showToast('Participant created but no temporary password was returned', 'error');
+    await loadParticipants();
+    return;
+  }
+  const modal = openModal({
+    title: 'Participant created',
+    body: `
+      <p>Share this temporary password securely. It will not be shown again.</p>
+      <div class="card" style="margin:0.5rem 0;">${escapeHtml(data.temp_password)}</div>
+      <button class="btn inline" id="copyTempPassword">Copy password</button>
+    `,
+    confirmText: 'Close',
+    cancelText: 'Dismiss',
+    dismissible: false,
+  });
+  const copyBtn = modal?.querySelector('#copyTempPassword');
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      try {
+        if (!navigator.clipboard?.writeText) {
+          showToast('Clipboard not supported in this browser', 'error');
+          return;
+        }
+        await navigator.clipboard.writeText(data.temp_password);
+        showToast('Copied to clipboard');
+      } catch (err) {
+        showToast('Copy failed', 'error');
+      }
+    };
+  }
   document.getElementById('participantUsername').value = '';
   document.getElementById('participantEmail').value = '';
   await loadParticipants();
@@ -589,12 +920,12 @@ async function createParticipant() {
 
 function confirmDeleteParticipant(id, label) {
   openModal({
-    title: `Remove ${label}?`,
-    body: `<p>Delete ${label}? This will remove their portfolio data.</p>`,
+    title: `Remove ${escapeHtml(label)}?`,
+    body: `<p>Delete ${escapeHtml(label)}? This will remove their portfolio data.</p>`,
     confirmText: 'Delete',
     onConfirm: async () => {
-      const res = await fetch(`/api/manager_participants.php?id=${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await fetchJson(`/api/manager_participants.php?id=${id}`, { method: 'DELETE' }, 'Failed to delete participant');
+      if (!data) return;
       if (data.error) return showToast(data.error, 'error');
       showToast('Participant removed');
       await loadParticipants();
@@ -604,12 +935,24 @@ function confirmDeleteParticipant(id, label) {
 
 function renderManageStocks() {
   const tbody = document.querySelector('#manageStocksTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   const stocks = state.managerData.stocks.length ? state.managerData.stocks : state.stocks;
   stocks.forEach((s) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${s.ticker}</td><td>${s.name}</td><td>${formatCurrency(s.current_price || s.initial_price)}</td><td><button class="btn ghost inline" data-id="${s.id}">Delete</button></td>`;
-    tr.querySelector('button').onclick = () => confirmDeleteStock(s.id, s.ticker);
+    const ticker = document.createElement('td');
+    ticker.textContent = s.ticker;
+    const name = document.createElement('td');
+    name.textContent = s.name;
+    const price = document.createElement('td');
+    price.textContent = formatCurrency(s.current_price || s.initial_price);
+    const actionTd = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost inline';
+    btn.textContent = 'Delete';
+    btn.onclick = () => confirmDeleteStock(s.id, s.ticker);
+    actionTd.appendChild(btn);
+    tr.append(ticker, name, price, actionTd);
     tbody.appendChild(tr);
   });
   if (!stocks.length) tbody.innerHTML = '<tr><td colspan="4" class="empty">No stocks yet</td></tr>';
@@ -621,23 +964,45 @@ function renderPriceUpdater() {
   const options = (state.managerData.priceOptions && state.managerData.priceOptions.length)
     ? state.managerData.priceOptions
     : state.stocks;
-  select.innerHTML = '<option value="">Select stock</option>' + options.map((s) => `<option value="${s.id}">${s.ticker} · ${formatCurrency(s.current_price || s.initial_price)}</option>`).join('');
+  select.innerHTML = '';
+  const defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = 'Select stock';
+  select.appendChild(defaultOpt);
+  options.forEach((s) => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.ticker} · ${formatCurrency(s.current_price || s.initial_price)}`;
+    select.appendChild(opt);
+  });
 }
 
 function renderManagerScenarios() {
   const tbody = document.querySelector('#scenarioTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.managerData.scenarios || []).forEach((sc) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${sc.title}</td>
-      <td>${pill(sc.status, sc.status)}</td>
-      <td>${formatWindow(sc.starts_at, sc.ends_at)}</td>
-      <td><div class="table-actions"><button class="btn ghost inline" data-action="status">Toggle</button><button class="btn danger inline" data-action="delete">Delete</button></div></td>
-    `;
-    const buttons = tr.querySelectorAll('button');
-    buttons[0].onclick = () => toggleScenarioStatus(sc);
-    buttons[1].onclick = () => confirmDeleteScenario(sc.id, sc.title);
+    const title = document.createElement('td');
+    title.textContent = sc.title;
+    const status = document.createElement('td');
+    status.appendChild(pill(sc.status, sc.status));
+    const windowTd = document.createElement('td');
+    windowTd.textContent = formatWindow(sc.starts_at, sc.ends_at);
+    const actionTd = document.createElement('td');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-actions';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn ghost inline';
+    toggleBtn.textContent = 'Toggle';
+    toggleBtn.onclick = () => toggleScenarioStatus(sc);
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn danger inline';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.onclick = () => confirmDeleteScenario(sc.id, sc.title);
+    wrapper.append(toggleBtn, deleteBtn);
+    actionTd.appendChild(wrapper);
+    tr.append(title, status, windowTd, actionTd);
     tbody.appendChild(tr);
   });
   if (!state.managerData.scenarios.length) {
@@ -647,11 +1012,23 @@ function renderManagerScenarios() {
 
 function renderParticipants() {
   const tbody = document.querySelector('#participantsTable tbody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   (state.managerData.participants || []).forEach((p) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${p.username || '-'}</td><td>${p.email}</td><td>${formatCurrency(p.cash_balance || 0)}</td><td><button class="btn ghost inline">Delete</button></td>`;
-    tr.querySelector('button').onclick = () => confirmDeleteParticipant(p.id, p.username || p.email);
+    const username = document.createElement('td');
+    username.textContent = p.username || '-';
+    const email = document.createElement('td');
+    email.textContent = p.email;
+    const cash = document.createElement('td');
+    cash.textContent = formatCurrency(p.cash_balance || 0);
+    const action = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost inline';
+    btn.textContent = 'Delete';
+    btn.onclick = () => confirmDeleteParticipant(p.id, p.username || p.email);
+    action.appendChild(btn);
+    tr.append(username, email, cash, action);
     tbody.appendChild(tr);
   });
   if (!state.managerData.participants.length) {

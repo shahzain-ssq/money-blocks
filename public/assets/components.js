@@ -5,15 +5,22 @@ document.body.appendChild(toastContainer);
 export function showToast(message, type = 'success', timeout = 3500) {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `<span>${message}</span><button class="btn ghost inline">✕</button>`;
-  const closeBtn = toast.querySelector('button');
-  closeBtn.onclick = () => toast.remove();
+  const text = document.createElement('span');
+  text.textContent = message;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn ghost inline';
+  closeBtn.textContent = '✕';
+  toast.append(text, closeBtn);
+  const timeoutId = setTimeout(() => toast.remove(), timeout);
+  closeBtn.onclick = () => {
+    clearTimeout(timeoutId);
+    toast.remove();
+  };
   toastContainer.appendChild(toast);
-  setTimeout(() => toast.remove(), timeout);
 }
 
 let modalBackdrop;
-export function openModal({ title, body, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm }) {
+export function openModal({ title, body, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm, dismissible = true }) {
   if (!modalBackdrop) {
     modalBackdrop = document.createElement('div');
     modalBackdrop.className = 'modal-backdrop';
@@ -22,24 +29,42 @@ export function openModal({ title, body, confirmText = 'Confirm', cancelText = '
   modalBackdrop.innerHTML = '';
   const modal = document.createElement('div');
   modal.className = 'modal';
-  modal.innerHTML = `
-    <header><h3>${title}</h3><button class="btn ghost inline" aria-label="Close">✕</button></header>
-    <div>${body}</div>
-    <footer>
-      <button class="btn secondary" data-role="cancel">${cancelText}</button>
-      <button class="btn danger" data-role="confirm">${confirmText}</button>
-    </footer>
-  `;
+  const header = document.createElement('header');
+  const titleEl = document.createElement('h3');
+  titleEl.textContent = title;
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn ghost inline';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '✕';
+  header.append(titleEl, closeBtn);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.innerHTML = body;
+
+  const footer = document.createElement('footer');
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn secondary';
+  cancelBtn.dataset.role = 'cancel';
+  cancelBtn.textContent = cancelText;
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn danger';
+  confirmBtn.dataset.role = 'confirm';
+  confirmBtn.textContent = confirmText;
+  footer.append(cancelBtn, confirmBtn);
+
+  modal.append(header, bodyEl, footer);
   modalBackdrop.appendChild(modal);
   modalBackdrop.style.display = 'flex';
   const close = () => { modalBackdrop.style.display = 'none'; };
-  modal.querySelector('[aria-label="Close"]').onclick = close;
-  modal.querySelector('[data-role="cancel"]').onclick = close;
-  modal.querySelector('[data-role="confirm"]').onclick = async () => {
+  closeBtn.onclick = close;
+  cancelBtn.onclick = close;
+  confirmBtn.onclick = async () => {
     if (onConfirm) await onConfirm();
     close();
   };
-  modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) close(); });
+  const backdropHandler = (e) => { if (dismissible && e.target === modalBackdrop) close(); };
+  modalBackdrop.addEventListener('click', backdropHandler, { once: true });
+  return modal;
 }
 
 export function toggleSection(target) {
@@ -53,11 +78,14 @@ export function formatCurrency(value) {
 
 export function formatChange(value) {
   const num = Number(value) || 0;
-  const cls = num >= 0 ? 'positive' : 'negative';
-  const prefix = num >= 0 ? '+' : '';
-  return `<span class="${cls}">${prefix}${num.toFixed(2)}</span>`;
+  const className = num > 0 ? 'positive' : num < 0 ? 'negative' : 'neutral';
+  const prefix = num > 0 ? '+' : '';
+  return { text: `${prefix}${num.toFixed(2)}`, className };
 }
 
 export function pill(label, status) {
-  return `<span class="pill ${status}">${label}</span>`;
+  const span = document.createElement('span');
+  span.className = `pill ${status}`;
+  span.textContent = label;
+  return span;
 }

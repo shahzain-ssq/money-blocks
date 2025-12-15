@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Financial Simulation Portal</title>
-  <link rel="stylesheet" href="/public/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
   <div class="app-shell" style="grid-template-columns: 1fr;">
@@ -14,12 +14,15 @@
           <h2>Welcome to MoneyBlocks</h2>
           <p class="muted">Select your institution and sign in to enter the trading portal.</p>
           <div class="form-row">
+            <label for="institution">Institution</label>
             <select class="input" id="institution"></select>
             <button class="btn" id="googleBtn" disabled>Login with Google</button>
           </div>
           <form id="loginForm" style="margin-top:1rem; display:grid; gap:0.75rem;">
-            <label>Username or Email<input type="text" name="identifier" class="input" required /></label>
-            <label>Password<input type="password" name="password" class="input" required /></label>
+            <label for="identifier">Username or Email</label>
+            <input type="text" name="identifier" id="identifier" class="input" required autocomplete="username" />
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" class="input" required autocomplete="current-password" />
             <button class="btn" type="submit">Login</button>
           </form>
           <p id="status" class="muted"></p>
@@ -27,6 +30,6 @@
       </div>
     </main>
   </div>
-  <script src="/public/login.js"></script>
+  <script src="/login.js"></script>
 </body>
 </html>

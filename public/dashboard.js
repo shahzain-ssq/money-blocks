@@ -1,5 +1,12 @@
 let ws;
 let configPromise;
+let debounceTimer;
+let reconnectDelay = 1000;
+
+function debouncedInit() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => init(), 300);
+}
 
 async function loadConfig() {
   if (!configPromise) {
@@ -15,8 +22,12 @@ async function init() {
   try {
     const appConfig = await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
+    if (!meRes.ok) {
+      window.location = '/index.html';
+      return;
+    }
     const me = await meRes.json();
-    if (!me.user) return window.location = '/public/index.html';
+    if (!me.user) return window.location = '/index.html';
     const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
       fetch('/api/portfolio.php'),
       fetch('/api/stocks.php'),
@@ -124,7 +135,7 @@ async function trade(stockId, type) {
     }
     const data = await res.json();
     alert(data.message || 'Trade executed successfully');
-    init();
+    debouncedInit();
   } catch (err) {
     console.error('Trade failed:', err);
     alert('Trade failed. Please try again.');
@@ -136,22 +147,63 @@ async function connectSocket(institutionId, wsPublicUrl) {
     console.warn('WS_PUBLIC_URL not set; skipping WebSocket connection');
     return;
   }
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    try {
+      ws.close();
+    } catch (err) {
+      console.warn('Error closing previous WebSocket connection', err);
+    }
+  }
   const url = new URL(wsPublicUrl);
   url.searchParams.set('institution_id', institutionId);
   ws = new WebSocket(url.toString());
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+  };
   ws.onmessage = (ev) => {
-    const msg = JSON.parse(ev.data);
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch (err) {
+      console.warn('Invalid WebSocket message', err);
+      return;
+    }
     if (msg.type === 'price_update') {
-      init();
+      debouncedInit();
     }
     if (msg.type === 'crisis_published') {
+      if (!msg.title || typeof msg.title !== 'string') {
+        console.warn('Invalid crisis_published message', msg);
+        return;
+      }
       alert(`New scenario: ${msg.title}`);
-      init();
+      debouncedInit();
     }
   };
   ws.onclose = () => {
     console.warn('WebSocket disconnected');
+    ws = null;
+    setTimeout(() => {
+      let cfg;
+      loadConfig()
+        .then((loaded) => {
+          cfg = loaded;
+          if (!cfg.wsPublicUrl) return null;
+          return fetch('/api/auth_me.php');
+        })
+        .then((res) => (res && res.ok ? res.json() : null))
+        .then((me) => {
+          if (me && me.user && cfg?.wsPublicUrl) {
+            connectSocket(me.user.institution_id, cfg.wsPublicUrl);
+            reconnectDelay = Math.min(10000, reconnectDelay * 2);
+          } else {
+            console.warn('User not authenticated, stopping WebSocket reconnection');
+          }
+        })
+        .catch((err) => console.warn('WebSocket reconnect failed', err));
+    }, reconnectDelay);
   };
+  ws.onerror = (err) => console.warn('WebSocket error', err);
 }
 
 init();

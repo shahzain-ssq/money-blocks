@@ -3,23 +3,40 @@ require_once __DIR__ . '/Database.php';
 
 class StockService
 {
+    /**
+     * Build a trusted SQL fragment for the latest price fields.
+     * Alias and column values are interpolated directly and must only be called with trusted strings.
+     */
+    private static function latestPriceFragment(string $alias = 's', string $column = 'price', int $offset = 0): string
+    {
+        $allowedAliases = ['s'];
+        $allowedColumns = ['price', 'created_at'];
+        if (!in_array($alias, $allowedAliases, true) || !in_array($column, $allowedColumns, true)) {
+            throw new InvalidArgumentException('Invalid alias or column for latestPriceFragment');
+        }
+        $safeOffset = max(0, $offset);
+        $offsetClause = $safeOffset > 0 ? " OFFSET {$safeOffset}" : '';
+        return sprintf('(SELECT %s FROM stock_prices WHERE stock_id = %s.id ORDER BY created_at DESC LIMIT 1%s)', $column, $alias, $offsetClause);
+    }
+
     public static function listStocks(int $institutionId): array
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT s.*, 
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS current_price,
-                (SELECT created_at FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS updated_at,
-                (SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1 OFFSET 1) AS previous_price
-            FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker');
+        $currentPrice = self::latestPriceFragment();
+        $currentTimestamp = self::latestPriceFragment('s', 'created_at');
+        $previousPrice = self::latestPriceFragment('s', 'price', 1);
+        // updated_at here reflects the latest price timestamp to keep UI displays consistent with price freshness.
+        $stmt = $pdo->prepare("SELECT s.*,{$currentPrice} AS current_price,{$currentTimestamp} AS updated_at,{$previousPrice} AS previous_price FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker");
         $stmt->execute([$institutionId]);
         $stocks = $stmt->fetchAll();
         foreach ($stocks as &$stock) {
-            $current = $stock['current_price'] ?? $stock['initial_price'];
-            $prevBase = $stock['previous_price'] ?? $stock['initial_price'];
-            $change = ($current ?? 0) - ($prevBase ?? 0);
+            $current = $stock['current_price'] ?? $stock['initial_price'] ?? 0;
+            $prevBase = $stock['previous_price'] ?? $stock['initial_price'] ?? 0;
+            $change = $current - $prevBase;
             $stock['change'] = $change;
-            $stock['change_pct'] = ($prevBase ?? 0) ? ($change / $prevBase) * 100 : 0;
+            $stock['change_pct'] = $prevBase ? ($change / $prevBase) * 100 : 0;
         }
+        unset($stock);
         return $stocks;
     }
 
@@ -39,11 +56,9 @@ class StockService
     public static function latestPrice(int $stockId, int $institutionId): ?array
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT s.id, s.ticker, s.name, (
-                SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1
-            ) AS current_price,
-            (SELECT created_at FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1) AS updated_at
-            FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1');
+        $currentPrice = self::latestPriceFragment('s');
+        $updatedAt = self::latestPriceFragment('s', 'created_at');
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, {$currentPrice} AS current_price, {$updatedAt} AS updated_at FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1");
         $stmt->execute([$stockId, $institutionId]);
         $stock = $stmt->fetch();
         return $stock ?: null;
@@ -52,11 +67,15 @@ class StockService
     public static function searchStocks(int $institutionId, string $query): array
     {
         $pdo = Database::getConnection();
-        $like = '%' . $query . '%';
-        $stmt = $pdo->prepare('SELECT s.id, s.ticker, s.name, (
-                SELECT price FROM stock_prices WHERE stock_id = s.id ORDER BY created_at DESC LIMIT 1
-            ) AS current_price
-            FROM stocks s WHERE s.institution_id = ? AND s.active = 1 AND (s.ticker LIKE ? OR s.name LIKE ?) ORDER BY s.ticker LIMIT 20');
+        $trimmed = trim($query);
+        if ($trimmed === '') {
+            return [];
+        }
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $trimmed);
+        $like = '%' . $escaped . '%';
+        $currentPrice = self::latestPriceFragment();
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, {$currentPrice} AS current_price
+            FROM stocks s WHERE s.institution_id = ? AND s.active = 1 AND (s.ticker LIKE ? ESCAPE '\\\\' OR s.name LIKE ? ESCAPE '\\\\') ORDER BY s.ticker LIMIT 20");
         $stmt->execute([$institutionId, $like, $like]);
         return $stmt->fetchAll();
     }
@@ -64,6 +83,7 @@ class StockService
     public static function history(int $stockId, int $institutionId, int $limit = 30): array
     {
         $pdo = Database::getConnection();
+        $limit = max(1, min($limit, 365));
         $stmt = $pdo->prepare('SELECT s.id FROM stocks s WHERE s.id = ? AND s.institution_id = ? AND s.active = 1');
         $stmt->execute([$stockId, $institutionId]);
         if (!$stmt->fetch()) {

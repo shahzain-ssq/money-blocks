@@ -2,7 +2,17 @@ async function loadInstitutions() {
   const res = await fetch('/api/institutions.php');
   const data = await res.json();
   const select = document.getElementById('institution');
-  select.innerHTML = '<option value="">Choose institution</option>' + data.institutions.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Choose institution';
+  select.appendChild(placeholder);
+  (data.institutions || []).forEach((i) => {
+    const opt = document.createElement('option');
+    opt.value = i.id;
+    opt.textContent = i.name;
+    select.appendChild(opt);
+  });
 }
 
 async function handleLogin(e) {
@@ -13,7 +23,7 @@ async function handleLogin(e) {
   const res = await fetch('/api/auth_login.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await res.json();
   document.getElementById('status').textContent = data.error ? data.error : 'Logged in';
-  if (!data.error) window.location = '/public/dashboard.html';
+  if (!data.error) window.location = '/dashboard.html';
 }
 
 document.getElementById('loginForm').addEventListener('submit', handleLogin);

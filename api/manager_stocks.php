@@ -51,18 +51,29 @@ if ($method === 'PUT') {
     if (!$id) {
         jsonResponse(['error' => 'id_required'], 422);
     }
-    $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?')
-        ->execute([
-            $input['ticker'] ?? '',
-            $input['name'] ?? '',
-            $input['initial_price'] ?? 0,
-            $input['total_limit'] ?? null,
-            $input['per_user_limit'] ?? null,
-            $input['per_user_short_limit'] ?? null,
-            isset($input['active']) ? (int)$input['active'] : 1,
-            $id,
-            $user['institution_id'],
-        ]);
+    $exists = $pdo->prepare('SELECT 1 FROM stocks WHERE id = ? AND institution_id = ?');
+    $exists->execute([$id, $user['institution_id']]);
+    if (!$exists->fetchColumn()) {
+        jsonResponse(['error' => 'not_found'], 404);
+    }
+    $ticker = trim($input['ticker'] ?? '');
+    $name = trim($input['name'] ?? '');
+    $initialPrice = (float)($input['initial_price'] ?? 0);
+    if ($ticker === '' || $name === '' || $initialPrice <= 0) {
+        jsonResponse(['error' => 'invalid_input'], 422);
+    }
+    $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+    $update->execute([
+        $ticker,
+        $name,
+        $initialPrice,
+        $input['total_limit'] ?? null,
+        $input['per_user_limit'] ?? null,
+        $input['per_user_short_limit'] ?? null,
+        isset($input['active']) ? (int)$input['active'] : 1,
+        $id,
+        $user['institution_id'],
+    ]);
     jsonResponse(['ok' => true]);
 }
 
