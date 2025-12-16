@@ -11,6 +11,9 @@ from typing import Dict, Optional, Set
 from urllib.parse import parse_qs, urlparse
 
 from aiohttp import web
+# NOTE: Uses websockets.legacy.server API to preserve direct access to
+# ws.request_headers for Origin validation. Modern API requires a different
+# approach and is not yet adopted here.
 from websockets.legacy.server import WebSocketServerProtocol, serve
 
 MIN_PYTHON = (3, 11)
