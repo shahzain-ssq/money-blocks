@@ -6,11 +6,13 @@ import json
 import os
 import signal
 import sys
+from pathlib import Path
 from typing import Dict, Optional, Set
 from urllib.parse import parse_qs, urlparse
 
 import websockets
 from aiohttp import web
+from websockets.legacy.server import WebSocketServerProtocol
 
 MIN_PYTHON = (3, 11)
 
@@ -35,7 +37,70 @@ def _enforce_python_version() -> None:
 
 _enforce_python_version()
 
-connections: Dict[int, Set[websockets.WebSocketServerProtocol]] = {}
+
+def _builtin_load_env(dotenv_path: Path, *, override: bool = False) -> bool:
+    if not dotenv_path.exists() or not dotenv_path.is_file():
+        return False
+
+    def _parse_value(raw: str) -> str:
+        raw = raw.strip()
+        if len(raw) >= 2 and (
+            (raw[0] == raw[-1] == '"') or (raw[0] == raw[-1] == "'")
+        ):
+            return raw[1:-1]
+        return raw
+
+    loaded = False
+    with dotenv_path.open("r", encoding="utf-8") as env_file:
+        for line in env_file:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            key = key.strip()
+            value = _parse_value(value)
+            if not override and key in os.environ:
+                continue
+            os.environ[key] = value
+            loaded = True
+    return loaded
+
+
+def _load_env_from_root() -> None:
+    # Assumes this file lives at <project_root>/websocket/server.py; adjust parent
+    # traversal if the file is relocated within the repository structure.
+    root = Path(__file__).resolve().parents[1]
+    dotenv_path = root / ".env"
+
+    loaded = False
+    method = None
+    if dotenv_path.exists():
+        try:
+            from dotenv import load_dotenv  # type: ignore
+
+            loaded = bool(load_dotenv(dotenv_path, override=False))
+            method = "python-dotenv"
+        except (ImportError, ModuleNotFoundError, OSError):
+            loaded = _builtin_load_env(dotenv_path, override=False)
+            method = "builtin"
+
+    print(
+        json.dumps(
+            {
+                "event": "dotenv",
+                "path": str(dotenv_path),
+                "loaded": loaded,
+                "method": method or "not_found",
+            }
+        )
+    )
+
+
+_load_env_from_root()
+
+connections: Dict[int, Set[WebSocketServerProtocol]] = {}
 
 ADMIN_TOKEN = (
     os.environ.get("WS_ADMIN_TOKEN")
@@ -65,7 +130,7 @@ if not ALLOWED_ORIGINS:
     )
 
 
-async def register(ws, institution_id: int):
+async def register(ws: WebSocketServerProtocol, institution_id: int):
     connections.setdefault(institution_id, set()).add(ws)
     print(
         json.dumps(
@@ -74,7 +139,7 @@ async def register(ws, institution_id: int):
     )
 
 
-async def unregister(ws, institution_id: int):
+async def unregister(ws: WebSocketServerProtocol, institution_id: int):
     if institution_id in connections:
         connections[institution_id].discard(ws)
         if not connections[institution_id]:
@@ -94,7 +159,7 @@ def _normalize_origin(origin: Optional[str]) -> Optional[str]:
     return origin.rstrip("/") if origin else origin
 
 
-async def handler(ws):
+async def handler(ws: WebSocketServerProtocol):
     origin = ws.request_headers.get("Origin")
     normalized_origin = _normalize_origin(origin)
     if not normalized_origin or normalized_origin not in ALLOWED_ORIGINS:
@@ -121,7 +186,7 @@ async def handler(ws):
         await unregister(ws, institution_id)
 
 
-async def _safe_send(ws, payload: str, institution_id: int):
+async def _safe_send(ws: WebSocketServerProtocol, payload: str, institution_id: int):
     try:
         await ws.send(payload)
         return True
@@ -159,7 +224,7 @@ async def broadcast(message: dict):
     )
 
     delivered = 0
-    for ws, result in zip(recipients, results, strict=True):
+    for ws, result in zip(recipients, results):
         if result is True:
             delivered += 1
             continue
