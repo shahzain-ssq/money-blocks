@@ -43,7 +43,8 @@ sql/schema.sql       # MariaDB schema
    python websocket/server.py
    ```
    The requirements pin `websockets<14.0` because the server currently relies on
-   the legacy API for request header access in the WebSocket handler.
+   the legacy API for request header access in the WebSocket handler, and
+   `aiohttp>=3.9.4` to avoid vulnerabilities in earlier 3.9.x releases.
    The server binds to `127.0.0.1:8787` (WebSocket) and `127.0.0.1:8766` (admin HTTP), which can be exposed publicly via a Cloudflare Tunnel.
 
 5. **Run the PHP API/front end**
