@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Dict, Optional, Set
 from urllib.parse import parse_qs, urlparse
 
-import websockets
 from aiohttp import web
-from websockets.legacy.server import WebSocketServerProtocol
+from websockets.legacy.server import WebSocketServerProtocol, serve
 
 MIN_PYTHON = (3, 11)
 
@@ -295,9 +294,7 @@ async def prune_connections():
 
 
 async def start_servers():
-    ws_server = await websockets.serve(
-        handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=20
-    )
+    ws_server = await serve(handler, WS_SERVER_HOST, WS_SERVER_PORT, ping_interval=20)
 
     app = web.Application()
     app.router.add_get("/health", healthcheck)
