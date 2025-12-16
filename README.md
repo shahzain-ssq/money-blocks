@@ -22,7 +22,7 @@ sql/schema.sql       # MariaDB schema
 
 1. **Install dependencies**
    - PHP 8+ with PDO MySQL extension
-   - Python 3.10+ with `websockets` and `aiohttp`
+   - Python 3.10+ with `websockets` and `aiohttp` (pinned below)
    - MariaDB/MySQL
 
 2. **Database**
@@ -39,9 +39,12 @@ sql/schema.sql       # MariaDB schema
 
 4. **Run the WebSocket server**
    ```bash
-   pip install websockets aiohttp
+   pip install -r requirements.txt
    python websocket/server.py
    ```
+   The requirements pin `websockets<14.0` because the server currently relies on
+   the legacy API for request header access in the WebSocket handler, and
+   `aiohttp>=3.9.4` to avoid vulnerabilities in earlier 3.9.x releases.
    The server binds to `127.0.0.1:8787` (WebSocket) and `127.0.0.1:8766` (admin HTTP), which can be exposed publicly via a Cloudflare Tunnel.
 
 5. **Run the PHP API/front end**
