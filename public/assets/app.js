@@ -15,6 +15,8 @@ const state = {
   maxReconnectAttempts: 8,
 };
 
+let initialRouteComplete = false;
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -126,17 +128,20 @@ function route() {
   document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${target}"]`)?.textContent || 'Portal';
   if (target === 'live') renderLivePrices();
   if (target === 'trade') renderTrade();
-  if (target === 'portfolio') {
-    refreshPortfolio();
-  }
-  if (target === 'shorts') {
-    refreshPortfolio();
+  if (target === 'portfolio' || target === 'shorts') {
+    if (initialRouteComplete) {
+      refreshPortfolio();
+    } else {
+      renderPortfolio();
+      renderShorts();
+    }
   }
   if (target === 'scenarios') renderScenarios();
   if (target === 'manage-stocks') renderManageStocks();
   if (target === 'manage-scenarios') renderManagerScenarios();
   if (target === 'participants') renderParticipants();
   if (target === 'update-price') renderPriceUpdater();
+  initialRouteComplete = true;
 }
 
 async function init() {
