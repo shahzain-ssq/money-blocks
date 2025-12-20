@@ -13,7 +13,11 @@ class PortfolioService
     public static function getUserPortfolio(int $userId, int $institutionId): array
     {
         // Auto-settle any expired shorts so portfolio state stays fresh without a cron job.
-        TradeService::closeExpiredShorts($institutionId);
+        try {
+            TradeService::closeExpiredShorts($institutionId);
+        } catch (Throwable $e) {
+            error_log(sprintf('Failed to auto-close expired shorts for institution %d: %s', $institutionId, $e->getMessage()));
+        }
 
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare('SELECT * FROM portfolios WHERE user_id = ?');

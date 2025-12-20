@@ -131,7 +131,6 @@ function route() {
   }
   if (target === 'shorts') {
     refreshPortfolio();
-    renderShorts();
   }
   if (target === 'scenarios') renderScenarios();
   if (target === 'manage-stocks') renderManageStocks();
