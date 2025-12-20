@@ -13,9 +13,9 @@ const state = {
   reconnectDelay: 1000,
   reconnectAttempts: 0,
   maxReconnectAttempts: 8,
+  // Tracks whether the initial route has completed to avoid redundant refreshes on first load.
+  initialRouteComplete: false,
 };
-
-let initialRouteComplete = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -129,11 +129,8 @@ function route() {
   if (target === 'live') renderLivePrices();
   if (target === 'trade') renderTrade();
   if (target === 'portfolio' || target === 'shorts') {
-    if (initialRouteComplete) {
+    if (state.initialRouteComplete) {
       refreshPortfolio();
-    } else {
-      renderPortfolio();
-      renderShorts();
     }
   }
   if (target === 'scenarios') renderScenarios();
@@ -141,7 +138,7 @@ function route() {
   if (target === 'manage-scenarios') renderManagerScenarios();
   if (target === 'participants') renderParticipants();
   if (target === 'update-price') renderPriceUpdater();
-  initialRouteComplete = true;
+  state.initialRouteComplete = true;
 }
 
 async function init() {
