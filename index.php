@@ -1,5 +1,3 @@
 <?php
-// Redirect root requests to the public front-end.
-header('Location: /public/');
-http_response_code(302);
-exit;
+// Serve the public front-end at the root without changing the URL.
+require __DIR__ . '/public/index.php';
