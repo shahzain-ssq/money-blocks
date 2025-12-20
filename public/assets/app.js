@@ -126,8 +126,13 @@ function route() {
   document.getElementById('pageTitle').textContent = document.querySelector(`[data-route="${target}"]`)?.textContent || 'Portal';
   if (target === 'live') renderLivePrices();
   if (target === 'trade') renderTrade();
-  if (target === 'portfolio') renderPortfolio();
-  if (target === 'shorts') renderShorts();
+  if (target === 'portfolio') {
+    refreshPortfolio();
+  }
+  if (target === 'shorts') {
+    refreshPortfolio();
+    renderShorts();
+  }
   if (target === 'scenarios') renderScenarios();
   if (target === 'manage-stocks') renderManageStocks();
   if (target === 'manage-scenarios') renderManagerScenarios();

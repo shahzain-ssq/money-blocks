@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/TradeService.php';
 
 class PortfolioService
 {
@@ -11,6 +12,9 @@ class PortfolioService
 
     public static function getUserPortfolio(int $userId, int $institutionId): array
     {
+        // Auto-settle any expired shorts so portfolio state stays fresh without a cron job.
+        TradeService::closeExpiredShorts($institutionId);
+
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare('SELECT * FROM portfolios WHERE user_id = ?');
         $stmt->execute([$userId]);
