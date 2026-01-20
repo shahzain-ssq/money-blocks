@@ -1,209 +1,119 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trading Portal</title>
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <title>Money Blocks - Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+      .status-dot {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          margin-right: 5px;
+      }
+      .status-live { color: #4ade80; }
+      .status-offline { color: #94a3b8; }
+
+      #ws-status {
+          font-size: 0.9rem;
+          margin-left: 1rem;
+          display: flex;
+          align-items: center;
+      }
+  </style>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="brand">💹 MoneyBlocks</div>
-      <nav id="studentNav">
-        <a class="nav-link" href="#/portfolio" data-route="portfolio">Portfolio</a>
-        <a class="nav-link" href="#/live" data-route="live">Live Prices</a>
-        <a class="nav-link" href="#/trade" data-route="trade">Trade</a>
-        <a class="nav-link" href="#/shorts" data-route="shorts">Shorts</a>
-        <a class="nav-link" href="#/activity" data-route="activity">Activity</a>
-        <a class="nav-link" href="#/scenarios" data-route="scenarios">Crisis Scenarios</a>
-        <a class="nav-link" href="#/settings" data-route="settings">Settings</a>
+      <div class="brand">MoneyBlocks</div>
+      <nav class="nav">
+        <a href="/dashboard.html" class="nav-link active">Dashboard</a>
+        <a href="/chart.html" class="nav-link">Markets & Charts</a>
+        <a href="/trade.html" class="nav-link">Trade</a>
+        <a href="/activity.html" class="nav-link">Activity</a>
+        <a href="/manager.html" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
-      <nav id="managerNav" style="display:none;">
-        <div class="nav-label">Manager</div>
-        <a class="nav-link" href="#/manage-stocks" data-route="manage-stocks">Manage Stocks</a>
-        <a class="nav-link" href="#/update-price" data-route="update-price">Update Stock Price</a>
-        <a class="nav-link" href="#/manage-scenarios" data-route="manage-scenarios">Manage Scenarios</a>
-        <a class="nav-link" href="#/participants" data-route="participants">Participants</a>
-      </nav>
+      <div class="sidebar-footer">
+          <div id="ws-status" class="status-offline">○ Offline</div>
+      </div>
     </aside>
+
     <main class="main">
-      <header class="header">
-        <div class="left">
-          <button class="sidebar-toggle" aria-label="Toggle navigation">☰</button>
-          <span class="title" id="pageTitle">Portfolio</span>
+      <div class="top-bar">
+         <h2 id="pageTitle">Dashboard</h2>
+         <div class="user-info">
+             <span id="cash">Cash: Loading...</span>
+             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+         </div>
+      </div>
+
+      <div class="content grid-dashboard">
+        <!-- Portfolio Overview -->
+        <div class="card full-width">
+           <h3>Your Positions</h3>
+           <table id="positions" class="table">
+             <thead>
+               <tr>
+                 <th>Ticker</th>
+                 <th>Quantity</th>
+                 <th>Avg Price</th>
+               </tr>
+             </thead>
+             <tbody>
+               <!-- Loaded via JS -->
+             </tbody>
+           </table>
         </div>
-        <div class="actions">
-          <span class="badge" id="connectionBadge" aria-live="polite" aria-atomic="true"><span class="status-dot offline"></span>Disconnected</span>
-          <button class="user-menu" id="userMenu" type="button" aria-haspopup="menu" aria-expanded="false">User</button>
+
+        <!-- Short Positions -->
+        <div class="card full-width">
+           <h3>Active Shorts</h3>
+           <table id="shorts" class="table">
+             <thead>
+               <tr>
+                 <th>Ticker</th>
+                 <th>Quantity</th>
+                 <th>Open Price</th>
+                 <th>Expires At</th>
+               </tr>
+             </thead>
+             <tbody></tbody>
+           </table>
         </div>
-      </header>
-      <div class="content">
-        <section id="portfolio" class="section active">
-          <div class="grid two" id="portfolioSummary"></div>
-          <div class="card">
-            <div class="form-row" style="align-items:center; justify-content: space-between;">
-              <h3 style="margin:0;">Positions</h3>
-              <div id="portfolioValuation" class="muted"></div>
-            </div>
-            <table class="table" id="positionsTable">
-              <thead><tr><th>Ticker</th><th>Qty</th><th>Avg Price</th><th>Current</th><th>P/L</th><th>Value</th><th>Actions</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
 
-        <section id="live" class="section">
-          <div class="card">
-            <div class="form-row"><input class="input" id="liveSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" /></div>
-            <table class="table" id="liveTable">
-              <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th>Change</th><th>Updated</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
+        <!-- Market Overview (Simple List) -->
+        <div class="card full-width">
+           <h3>Market Overview</h3>
+           <div id="stocks" class="stock-grid">
+               <!-- Cards loaded via JS -->
+           </div>
+        </div>
 
-        <section id="trade" class="section">
-          <div class="card">
-            <h3>Buy / Sell</h3>
-            <div class="form-row">
-              <input class="input" id="tradeSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" />
-              <select class="input" id="tradeSelect"></select>
-            </div>
-            <div id="tradeDetails" class="muted" style="margin:0.5rem 0;"></div>
-            <div class="form-row">
-              <input type="number" class="input" id="buyQty" placeholder="Buy quantity" min="1" aria-label="Buy quantity" />
-              <button class="btn" id="buyBtn">Buy</button>
-            </div>
-            <div class="form-row">
-              <input type="number" class="input" id="sellQty" placeholder="Sell quantity" min="1" aria-label="Sell quantity" />
-              <button class="btn secondary" id="sellBtn">Sell</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="shorts" class="section">
-          <div class="grid two">
-            <div class="card">
-              <h3>Open Short</h3>
-            <div class="form-row">
-              <input class="input" id="shortSearch" placeholder="Find stock" aria-label="Find stock" />
-              <select class="input" id="shortSelect"></select>
-            </div>
-            <div class="form-row">
-              <input type="number" class="input" id="shortQty" placeholder="Quantity" min="1" aria-label="Short quantity" />
-              <select class="input" id="shortDuration">
-                <option value="">Duration (seconds)</option>
-                <option value="3600">1 hour</option>
-                <option value="86400">1 day</option>
-                <option value="604800">1 week</option>
-                </select>
-              </div>
-              <button class="btn" id="shortOpenBtn">Open Short</button>
-            </div>
-            <div class="card">
-              <h3>Active Shorts</h3>
-              <table class="table" id="shortsTable">
-                <thead><tr><th>Ticker</th><th>Qty</th><th>Open</th><th>Current</th><th>P/L</th><th>Expires</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section id="activity" class="section">
-          <div class="card">
-            <h3>Recent Activity</h3>
-            <div id="activityFeed" class="muted">No activity to display yet.</div>
-          </div>
-        </section>
-
-        <section id="scenarios" class="section">
-          <div class="grid two" id="scenarioList"></div>
-        </section>
-
-        <section id="settings" class="section">
-          <div class="card">
-            <h3>Settings</h3>
-            <p class="muted">Manage your account session.</p>
-            <button class="btn danger" id="logoutBtn">Logout</button>
-          </div>
-        </section>
-
-        <section id="manage-stocks" class="section">
-          <div class="card">
-            <div class="form-row">
-              <input class="input" id="newTicker" placeholder="Ticker" aria-label="Ticker" />
-              <input class="input" id="newName" placeholder="Name" aria-label="Name" />
-              <input class="input" id="newPrice" type="number" placeholder="Initial price" step="0.01" aria-label="Initial price" />
-              <button class="btn" id="createStockBtn">Create Stock</button>
-            </div>
-            <table class="table" id="manageStocksTable">
-              <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th><span class="sr-only">Actions</span></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="update-price" class="section">
-          <div class="card">
-            <h3>Update Stock Price</h3>
-            <div class="form-row">
-              <input class="input" id="priceSearch" placeholder="Search ticker or name" aria-label="Search ticker or name" />
-              <select class="input" id="priceSelect"></select>
-            </div>
-            <div id="priceDetails" class="muted"></div>
-            <div class="form-row">
-              <input class="input" id="newPriceValue" type="number" step="0.01" placeholder="New price" aria-label="New price" />
-              <button class="btn" id="updatePriceBtn">Update Price</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="manage-scenarios" class="section">
-          <div class="card">
-            <h3>Create Scenario</h3>
-            <div class="form-row">
-              <input class="input" id="scenarioTitle" placeholder="Title" aria-label="Scenario title" />
-              <select class="input" id="scenarioStatus" aria-label="Scenario status">
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-              </select>
-            </div>
-            <textarea class="input" id="scenarioDescription" placeholder="Description" rows="3" aria-label="Scenario description"></textarea>
-            <div class="form-row">
-              <input class="input" id="scenarioStart" type="datetime-local" aria-label="Scenario start" />
-              <input class="input" id="scenarioEnd" type="datetime-local" aria-label="Scenario end" />
-            </div>
-            <button class="btn" id="createScenarioBtn">Save Scenario</button>
-          </div>
-          <div class="card">
-            <h3>Existing Scenarios</h3>
-            <table class="table" id="scenarioTable">
-              <thead><tr><th>Title</th><th>Status</th><th>Window</th><th><span class="sr-only">Actions</span></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="participants" class="section">
-          <div class="card">
-            <div class="form-row">
-              <input class="input" id="participantSearch" placeholder="Search participants" aria-label="Search participants" />
-              <input class="input" id="participantUsername" placeholder="Username" autocomplete="username" aria-label="Participant username" />
-              <input class="input" id="participantEmail" placeholder="Email" autocomplete="email" type="email" aria-label="Participant email" />
-              <button class="btn" id="createParticipantBtn">Add Participant</button>
-            </div>
-            <table class="table" id="participantsTable">
-              <thead><tr><th>User</th><th>Email</th><th>Cash</th><th><span class="sr-only">Actions</span></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
+        <!-- Crisis Scenarios -->
+        <div class="card full-width">
+            <h3>Active Scenarios</h3>
+            <ul id="scenarios"></ul>
+        </div>
       </div>
     </main>
-    <div class="sidebar-overlay" aria-hidden="true"></div>
   </div>
-  <script type="module" src="/assets/app.js"></script>
+  <script type="module" src="/dashboard.js"></script>
+  <script>
+      document.getElementById('logoutBtn').onclick = () => {
+          // Implement logout or just redirect to index for now (assuming session cookie clears or overwrites on login)
+          window.location = '/index.html';
+      };
+
+      // Check manager role to show link
+      fetch('/api/auth_me.php')
+        .then(res => res.json())
+        .then(data => {
+            if (data.user && (data.user.role === 'manager' || data.user.role === 'admin')) {
+                document.getElementById('managerLink').style.display = 'block';
+            }
+        });
+  </script>
 </body>
 </html>

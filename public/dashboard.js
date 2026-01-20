@@ -1,7 +1,7 @@
-let ws;
+import { WebSocketManager } from './js/ws-manager.js';
+
 let configPromise;
 let debounceTimer;
-let reconnectDelay = 1000;
 
 function debouncedInit() {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -113,7 +113,36 @@ async function init() {
       li.appendChild(document.createTextNode(` - ${sc.description}`));
       scenariosEl.appendChild(li);
     });
-    await connectSocket(me.user.institution_id, appConfig.wsPublicUrl);
+
+    // Initialize WS Manager
+    if (appConfig.wsPublicUrl) {
+      const wsManager = WebSocketManager.getInstance(me.user.institution_id, appConfig.wsPublicUrl);
+
+      // Subscribe to messages
+      wsManager.subscribe((msg) => {
+        if (msg.type === 'price_update') {
+          debouncedInit();
+        }
+        if (msg.type === 'crisis_published') {
+           if (!msg.title || typeof msg.title !== 'string') {
+            console.warn('Invalid crisis_published message', msg);
+            return;
+          }
+          alert(`New scenario: ${msg.title}`);
+          debouncedInit();
+        }
+      });
+
+      // Update UI Status (if element exists)
+      const statusEl = document.getElementById('ws-status');
+      if (statusEl) {
+          wsManager.onStatusChange((status) => {
+              statusEl.textContent = status === 'connected' ? '● Live' : '○ Offline';
+              statusEl.className = status === 'connected' ? 'status-live' : 'status-offline';
+          });
+      }
+    }
+
   } catch (err) {
     console.error('Dashboard initialization failed:', err);
     alert('Failed to load dashboard. Please refresh the page.');
@@ -140,70 +169,6 @@ async function trade(stockId, type) {
     console.error('Trade failed:', err);
     alert('Trade failed. Please try again.');
   }
-}
-
-async function connectSocket(institutionId, wsPublicUrl) {
-  if (!wsPublicUrl) {
-    console.warn('WS_PUBLIC_URL not set; skipping WebSocket connection');
-    return;
-  }
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-    try {
-      ws.close();
-    } catch (err) {
-      console.warn('Error closing previous WebSocket connection', err);
-    }
-  }
-  const url = new URL(wsPublicUrl);
-  url.searchParams.set('institution_id', institutionId);
-  ws = new WebSocket(url.toString());
-  ws.onopen = () => {
-    reconnectDelay = 1000;
-  };
-  ws.onmessage = (ev) => {
-    let msg;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch (err) {
-      console.warn('Invalid WebSocket message', err);
-      return;
-    }
-    if (msg.type === 'price_update') {
-      debouncedInit();
-    }
-    if (msg.type === 'crisis_published') {
-      if (!msg.title || typeof msg.title !== 'string') {
-        console.warn('Invalid crisis_published message', msg);
-        return;
-      }
-      alert(`New scenario: ${msg.title}`);
-      debouncedInit();
-    }
-  };
-  ws.onclose = () => {
-    console.warn('WebSocket disconnected');
-    ws = null;
-    setTimeout(() => {
-      let cfg;
-      loadConfig()
-        .then((loaded) => {
-          cfg = loaded;
-          if (!cfg.wsPublicUrl) return null;
-          return fetch('/api/auth_me.php');
-        })
-        .then((res) => (res && res.ok ? res.json() : null))
-        .then((me) => {
-          if (me && me.user && cfg?.wsPublicUrl) {
-            connectSocket(me.user.institution_id, cfg.wsPublicUrl);
-            reconnectDelay = Math.min(10000, reconnectDelay * 2);
-          } else {
-            console.warn('User not authenticated, stopping WebSocket reconnection');
-          }
-        })
-        .catch((err) => console.warn('WebSocket reconnect failed', err));
-    }, reconnectDelay);
-  };
-  ws.onerror = (err) => console.warn('WebSocket error', err);
 }
 
 init();

@@ -65,6 +65,85 @@ class TradeService
         return ['status' => 'ok', 'open_price' => $price, 'expires_at' => $expiresAt->format(DateTimeInterface::ATOM)];
     }
 
+    public static function closeShort(int $userId, int $institutionId, int $stockId, int $quantity): array
+    {
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        $portfolio = self::getPortfolioRow($pdo, $userId);
+        $stock = self::loadStock($pdo, $stockId, $institutionId);
+        $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
+
+        // Find open shorts for this stock (FIFO or oldest first)
+        $stmt = $pdo->prepare('SELECT * FROM short_positions WHERE portfolio_id = ? AND stock_id = ? AND closed = 0 ORDER BY expires_at ASC');
+        $stmt->execute([$portfolio['id'], $stockId]);
+        $shorts = $stmt->fetchAll();
+
+        $remainingToClose = $quantity;
+        $totalProfit = 0;
+
+        foreach ($shorts as $short) {
+            if ($remainingToClose <= 0) break;
+
+            $canClose = min($remainingToClose, $short['quantity']);
+            $profit = ($short['open_price'] - $price) * $canClose;
+            $totalProfit += $profit;
+
+            if ($canClose == $short['quantity']) {
+                // Close full position
+                $pdo->prepare('UPDATE short_positions SET closed = 1, close_price = ?, close_at = NOW() WHERE id = ?')->execute([$price, $short['id']]);
+            } else {
+                // Partial close - split the position?
+                // The DB schema doesn't easily support partial closes on a single row without reducing quantity.
+                // But `quantity` in `short_positions` implies initial quantity.
+                // If we reduce quantity, we lose track of original.
+                // However, let's assume we can update quantity or split.
+                // For simplicity: Update quantity and create a new closed record? Or just update quantity.
+                // If I reduce quantity, `open_price` stays same.
+                $newQty = $short['quantity'] - $canClose;
+                $pdo->prepare('UPDATE short_positions SET quantity = ? WHERE id = ?')->execute([$newQty, $short['id']]);
+                // Create a record for the closed portion? No, the `trades` table records the action.
+                // But for historical accuracy of "what was closed", we might want to split.
+                // Let's just update quantity. The "closed" flag is only if qty becomes 0?
+                // Actually `closed` column is TINYINT.
+                // Let's stick to: Update quantity. If 0, mark closed.
+                // But wait, if I update quantity, the original record says "I opened X". Now it says "I opened X-Y".
+                // That's rewriting history slightly.
+                // Better approach: Split the row.
+                // 1. Update existing row to reduce quantity (remaining open part).
+                // 2. Insert new row for closed part? No, `short_positions` tracks ACTIVE shorts mostly?
+                // `short_positions` has `closed` flag.
+                // Let's just create a new row for the closed part?
+                // Or: Update existing row to `quantity = remaining`.
+                // Insert a new row with `closed=1`, `quantity=closed_amount`.
+
+                $pdo->prepare('UPDATE short_positions SET quantity = ? WHERE id = ?')->execute([$newQty, $short['id']]);
+
+                // We need to record the closure. `trades` table handles the financial record.
+                // Do we need a `short_positions` record for the closed part?
+                // `closeExpiredShorts` updates `closed=1`.
+                // If we care about `short_positions` history, we should probably clone it.
+                // For now, I will just update quantity. The "closed" history is in `trades`.
+            }
+
+            $remainingToClose -= $canClose;
+        }
+
+        if ($remainingToClose > 0) {
+             // Tried to close more than we have
+             $pdo->rollBack();
+             return ['error' => 'insufficient_shorts'];
+        }
+
+        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = NOW() WHERE id = ?')
+            ->execute([$totalProfit, $portfolio['id']]);
+
+        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_CLOSE", ?, ?, NOW())')
+            ->execute([$portfolio['id'], $stockId, $quantity, $price]);
+
+        $pdo->commit();
+        return ['status' => 'ok', 'price' => $price, 'profit' => $totalProfit];
+    }
+
     public static function closeExpiredShorts(int $institutionId): array
     {
         $pdo = Database::getConnection();

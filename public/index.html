@@ -3,32 +3,167 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Financial Simulation Portal</title>
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <title>Money Blocks - Login</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* Inline styles for modal - move to styles.css later */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.6);
+      backdrop-filter: blur(5px);
+    }
+    .modal-content {
+      background-color: var(--bg-card, #1e293b);
+      margin: 15% auto;
+      padding: 2rem;
+      border: 1px solid var(--border-color, #334155);
+      width: 90%;
+      max-width: 500px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    .modal-close {
+      color: var(--text-muted, #94a3b8);
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .modal-close:hover, .modal-close:focus {
+      color: var(--text-primary, #f8fafc);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .login-divider {
+      margin: 2rem 0;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color, #334155);
+      line-height: 0.1em;
+    }
+    .login-divider span {
+      background: var(--bg-main, #0f172a);
+      padding: 0 10px;
+      color: var(--text-muted, #94a3b8);
+    }
+  </style>
 </head>
 <body>
-  <div class="app-shell" style="grid-template-columns: 1fr;">
-    <main class="main" style="width:100%;">
-      <div class="content" style="max-width:720px; margin:0 auto;">
-        <div class="card">
-          <h2>Welcome to MoneyBlocks</h2>
-          <p class="muted">Select your institution and sign in to enter the trading portal.</p>
-          <div class="form-row">
-            <label for="institution">Institution</label>
-            <select class="input" id="institution"></select>
-            <button class="btn" id="googleBtn" disabled>Login with Google</button>
-          </div>
-          <form id="loginForm" style="margin-top:1rem; display:grid; gap:0.75rem;">
+  <div class="app-shell center-content">
+    <main class="main login-container">
+      <div class="card login-card">
+        <h1 class="brand-title">Money Blocks</h1>
+        <p class="muted text-center">Trading Portal Access</p>
+
+        <form id="loginForm" class="login-form">
+          <div class="form-group">
             <label for="identifier">Username or Email</label>
-            <input type="text" name="identifier" id="identifier" class="input" required autocomplete="username" />
+            <input type="text" name="identifier" id="identifier" class="input" required autocomplete="username" placeholder="Enter your username" />
+          </div>
+          <div class="form-group">
             <label for="password">Password</label>
-            <input type="password" name="password" id="password" class="input" required autocomplete="current-password" />
-            <button class="btn" type="submit">Login</button>
-          </form>
-          <p id="status" class="muted"></p>
+            <input type="password" name="password" id="password" class="input" required autocomplete="current-password" placeholder="Enter your password" />
+          </div>
+          <!-- Hidden institution ID for standard login, defaults to 1 or selected from modal?
+               Wait, the standard login requires institution_id.
+               The prompt says "Login with Username/Email + Password" AND "Login with Institution".
+               If the user logs in with Username/Password, we need to know the institution.
+               Usually, email/username is unique per institution.
+               The previous code had institution selection FIRST.
+               If we split them, we might need to infer institution or ask for it.
+               The prompt says: "Top section: login with Username/Email + Password", "Bottom section: Login with Institution button".
+               "When Login with Institution is clicked: Open a modal... On selection: redirect user to the institution's login page".
+               This implies "Login with Institution" is for SSO/OAuth flows.
+               The standard "Username/Password" flow might imply a default institution or global login.
+               However, the DB schema has `users` table with `institution_id`. `email` is unique per `institution_id`.
+               So we DO need `institution_id` for username/password login unless we search across all institutions (which might be ambiguous).
+
+               Let's assume for the "Username/Password" section, we still need to select an institution IF there are multiple.
+               OR, maybe "Login with Institution" IS the way to select institution for the standard login too?
+
+               Let's re-read carefully: "1) Starting page becomes Login (with Institution option)... Top section: login with Username/Email + Password. Bottom section: Login with Institution button. When clicked... lists institutions... On selection: redirect... (URL stored per institution)".
+
+               It seems "Login with Institution" is a separate flow (SSO).
+               But for standard login, we still need to know which institution.
+               Maybe I should include a hidden input for institution_id in the top form, and default it to something, or ask the user to select it via the modal to populate it?
+
+               Actually, if I look at `login.js`, `handleLogin` takes `institution_id`.
+               I will add a dropdown to the top form as well, OR make the "Login with Institution" button the way to select the context for the top form too?
+
+               Let's try this: The top form has "Institution" dropdown (pre-selected or searchable) + User/Pass.
+               The bottom button is for "SSO / Special Flow".
+
+               Wait, the prompt says "The root route... must become a Login screen. Layout: Top section: login with Username/Email + Password. Bottom section: Login with Institution button".
+               It implies the top section is the "default" login.
+               If I remove Institution select from top, how do I know where to log in?
+               Maybe the user has to select Institution first?
+
+               Let's keep it simple:
+               Top form: Institution (Select) + Username + Password.
+               Bottom button: "Login with SSO" (triggers modal? or just uses the selected institution?).
+
+               Actually, the prompt says "When 'Login with Institution' is clicked: Open a modal... lists institutions... On selection: redirect user to the institution's login page". This strongly suggests SSO.
+
+               So the Top section (User/Pass) is for "Standard DB Auth". Does it need Institution? Yes.
+               I will keep the Institution dropdown in the Top section, or maybe make it part of the form.
+
+               Let's look at the "Login with Institution" requirement again.
+               "Institutions list is pulled from a config source... On selection: redirect user to the institution's login page".
+
+               Okay, so:
+               Top: Standard Login (User, Pass, Institution).
+               Bottom: SSO Login (Click button -> Modal -> Select Inst -> Redirect).
+
+               I will put the Institution selector in the top form.
+          -->
+          <div class="form-group">
+             <label for="loginInstitution">Institution</label>
+             <select id="loginInstitution" class="input" required></select>
+          </div>
+
+          <button class="btn btn-primary full-width" type="submit">Login</button>
+
+          <p id="status" class="status-msg"></p>
+        </form>
+
+        <div class="login-divider">
+          <span>OR</span>
         </div>
+
+        <button id="institutionLoginBtn" class="btn btn-outline full-width">
+          Login with Institution (SSO)
+        </button>
       </div>
     </main>
+
+    <!-- Modal for SSO -->
+    <div id="institutionModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Select Institution</h3>
+          <span class="modal-close">&times;</span>
+        </div>
+        <p class="muted">Choose your institution to be redirected to their login portal.</p>
+        <div class="form-group">
+           <input type="text" id="institutionSearch" class="input" placeholder="Search..." style="margin-bottom: 1rem;">
+           <div id="institutionList" class="list-group">
+             <!-- Populated by JS -->
+           </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="/login.js"></script>
 </body>

@@ -25,6 +25,28 @@ if ($method === 'GET') {
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 
+if ($method === 'PUT') {
+    $id = (int)($input['id'] ?? 0);
+    $role = $input['role'] ?? '';
+    if ($id <= 0 || !in_array($role, ['student', 'manager'])) {
+        jsonResponse(['error' => 'invalid_input'], 422);
+    }
+    // Prevent demoting self or last admin logic if needed (but currently simple)
+    if ($id === (int)$user['id']) {
+        jsonResponse(['error' => 'cannot_modify_self'], 403);
+    }
+
+    $check = $pdo->prepare('SELECT id FROM users WHERE id = ? AND institution_id = ?');
+    $check->execute([$id, $user['institution_id']]);
+    if (!$check->fetch()) {
+        jsonResponse(['error' => 'user_not_found'], 404);
+    }
+
+    $update = $pdo->prepare('UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?');
+    $update->execute([$role, $id]);
+    jsonResponse(['ok' => true]);
+}
+
 if ($method === 'POST') {
     $username = trim($input['username'] ?? '');
     $email = trim($input['email'] ?? '');

@@ -43,3 +43,6 @@ foreach ($lines as $line) {
     putenv($key . '=' . $value);
     $_ENV[$key] = $value;
 }
+
+// Ensure UTC timezone for PHP
+date_default_timezone_set('UTC');

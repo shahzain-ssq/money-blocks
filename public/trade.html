@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Money Blocks - Trade</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+      .trade-container {
+          display: grid;
+          grid-template-columns: 1fr 350px;
+          gap: 1rem;
+          max-width: 1000px;
+          margin: 0 auto;
+      }
+      .trade-form-card {
+          background: var(--bg-card);
+          padding: 2rem;
+          border-radius: 8px;
+          border: 1px solid var(--border-color);
+      }
+      .trade-type-tabs {
+          display: flex;
+          margin-bottom: 1.5rem;
+          border-bottom: 1px solid var(--border-color);
+      }
+      .trade-tab {
+          padding: 0.75rem 1.5rem;
+          cursor: pointer;
+          color: var(--text-muted);
+          border-bottom: 2px solid transparent;
+      }
+      .trade-tab.active {
+          color: var(--text-primary);
+          border-bottom-color: var(--primary-color, #3b82f6);
+      }
+      .trade-actions {
+          display: flex;
+          gap: 0.5rem;
+          margin-bottom: 1.5rem;
+      }
+      .action-btn {
+          flex: 1;
+          padding: 0.75rem;
+          border-radius: 4px;
+          border: 1px solid var(--border-color);
+          background: var(--bg-main);
+          color: var(--text-muted);
+          cursor: pointer;
+      }
+      .action-btn.active.buy {
+          background: rgba(34, 197, 94, 0.2);
+          border-color: #22c55e;
+          color: #22c55e;
+      }
+      .action-btn.active.sell {
+          background: rgba(239, 68, 68, 0.2);
+          border-color: #ef4444;
+          color: #ef4444;
+      }
+      .preview-card {
+          background: var(--bg-card);
+          padding: 1.5rem;
+          border-radius: 8px;
+          border: 1px solid var(--border-color);
+      }
+      .preview-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 0.5rem 0;
+          border-bottom: 1px solid var(--border-color);
+      }
+      .preview-row:last-child {
+          border-bottom: none;
+      }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">MoneyBlocks</div>
+      <nav class="nav">
+        <a href="/dashboard.html" class="nav-link">Dashboard</a>
+        <a href="/chart.html" class="nav-link">Markets & Charts</a>
+        <a href="/trade.html" class="nav-link active">Trade</a>
+        <a href="/activity.html" class="nav-link">Activity</a>
+        <a href="/manager.html" class="nav-link" id="managerLink" style="display:none;">Admin</a>
+      </nav>
+      <div class="sidebar-footer">
+          <div id="ws-status" class="status-offline">○ Offline</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="top-bar">
+         <h2>Trade</h2>
+         <div class="user-info">
+             <span id="cashDisplay">Cash: Loading...</span>
+             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+         </div>
+      </div>
+
+      <div class="trade-container">
+          <!-- Trade Form -->
+          <div class="trade-form-card">
+              <div class="trade-type-tabs">
+                  <div class="trade-tab active" data-mode="spot">Spot Trading</div>
+                  <div class="trade-tab" data-mode="short">Short Selling</div>
+              </div>
+
+              <div class="trade-actions">
+                  <button class="action-btn active buy" data-action="buy" id="btnBuy">Buy</button>
+                  <button class="action-btn" data-action="sell" id="btnSell">Sell</button>
+              </div>
+
+              <form id="tradeForm">
+                  <div class="form-group">
+                      <label>Stock</label>
+                      <select id="stockSelect" class="input"></select>
+                  </div>
+
+                  <div class="form-group">
+                      <label>Quantity</label>
+                      <input type="number" id="quantityInput" class="input" min="1" value="1">
+                  </div>
+
+                  <div class="form-group" id="durationGroup" style="display:none;">
+                      <label>Duration</label>
+                      <select id="durationSelect" class="input">
+                          <!-- Populated via JS -->
+                          <option value="" disabled>Loading...</option>
+                      </select>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary full-width" id="submitBtn">Submit Trade</button>
+              </form>
+          </div>
+
+          <!-- Trade Preview -->
+          <div class="preview-card">
+              <h3>Trade Preview</h3>
+              <div class="preview-row">
+                  <span>Price</span>
+                  <span id="previewPrice">-</span>
+              </div>
+              <div class="preview-row">
+                  <span>Total Cost/Proceeds</span>
+                  <span id="previewTotal">-</span>
+              </div>
+              <div class="preview-row" id="expiryRow" style="display:none;">
+                   <span>Expires At</span>
+                   <span id="previewExpiry">-</span>
+              </div>
+              <div class="preview-row">
+                  <span>Projected Balance</span>
+                  <span id="previewBalance">-</span>
+              </div>
+          </div>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/trade.js"></script>
+  <script>
+      fetch('/api/auth_me.php')
+        .then(res => res.json())
+        .then(data => {
+            if (!data.user) window.location = '/index.html';
+             if (data.user.role === 'manager' || data.user.role === 'admin') {
+                document.getElementById('managerLink').style.display = 'block';
+            }
+        });
+      document.getElementById('logoutBtn').onclick = () => window.location = '/index.html';
+  </script>
+</body>
+</html>
