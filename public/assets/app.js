@@ -146,12 +146,12 @@ async function init() {
     await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
     if (!meRes.ok) {
-      window.location = '/index.html';
+      window.location = '/';
       return;
     }
     const me = await meRes.json();
     if (!me.user) {
-      window.location = '/index.html';
+      window.location = '/';
       return;
     }
     state.user = me.user;
@@ -559,7 +559,7 @@ function bindForms() {
   if (logoutBtn) {
     logoutBtn.onclick = async () => {
       await fetch('/api/auth_login.php', { method: 'DELETE' });
-      window.location = '/index.html';
+      window.location = '/';
     };
   }
 }

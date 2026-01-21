@@ -23,11 +23,11 @@ async function init() {
     const appConfig = await loadConfig();
     const meRes = await fetch('/api/auth_me.php');
     if (!meRes.ok) {
-      window.location = '/index.html';
+      window.location = '/';
       return;
     }
     const me = await meRes.json();
-    if (!me.user) return window.location = '/index.html';
+    if (!me.user) return window.location = '/';
     const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
       fetch('/api/portfolio.php'),
       fetch('/api/stocks.php'),
@@ -73,10 +73,15 @@ async function init() {
       actions.classList.add('actions');
       const buyBtn = document.createElement('button');
       buyBtn.textContent = 'Buy';
-      buyBtn.addEventListener('click', () => trade(s.id, 'buy'));
+      buyBtn.classList.add('btn', 'btn-sm', 'btn-primary');
+      buyBtn.style.marginRight = '0.5rem';
+      buyBtn.onclick = () => window.location = `/trade?ticker=${encodeURIComponent(s.ticker)}&action=buy`;
+
       const sellBtn = document.createElement('button');
       sellBtn.textContent = 'Sell';
-      sellBtn.addEventListener('click', () => trade(s.id, 'sell'));
+      sellBtn.classList.add('btn', 'btn-sm', 'btn-outline');
+      sellBtn.onclick = () => window.location = `/trade?ticker=${encodeURIComponent(s.ticker)}&action=sell`;
+
       actions.appendChild(buyBtn);
       actions.appendChild(sellBtn);
       card.appendChild(actions);

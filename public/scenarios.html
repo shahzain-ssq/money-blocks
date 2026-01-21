@@ -3,8 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Money Blocks - Activity</title>
+  <title>Money Blocks - Scenarios</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+      .scenario-card {
+          border-left: 4px solid var(--primary-color);
+      }
+      .scenario-card.unread {
+          border-left-color: var(--danger-color);
+          background-color: rgba(239, 68, 68, 0.05);
+      }
+      .scenario-meta {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.875rem;
+          color: var(--text-muted);
+          margin-bottom: 0.5rem;
+      }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -14,51 +30,37 @@
         <a href="/dashboard" class="nav-link">Dashboard</a>
         <a href="/chart" class="nav-link">Markets & Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
-        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
-        <a href="/activity" class="nav-link active">Activity</a>
+        <a href="/scenarios" class="nav-link active">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
+        <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
       <div class="sidebar-footer">
+          <!-- Status pill handled by CSS/JS -->
           <div id="ws-status" class="status-offline">○ Offline</div>
       </div>
     </aside>
 
     <main class="main">
       <div class="top-bar">
-         <h2>Transaction Activity</h2>
+         <h2>Crisis Scenarios</h2>
          <div class="user-info">
              <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
          </div>
       </div>
 
       <div class="content">
-          <div class="card full-width">
-              <table class="table" id="activityTable">
-                  <thead>
-                      <tr>
-                          <th>Time</th>
-                          <th>Type</th>
-                          <th>Stock</th>
-                          <th>Quantity</th>
-                          <th>Price</th>
-                          <th>Total</th>
-                      </tr>
-                  </thead>
-                  <tbody id="activityBody">
-                      <!-- Populated via JS -->
-                  </tbody>
-              </table>
-              <div class="pagination" id="pagination">
-                  <!-- Simple pagination controls if needed -->
-              </div>
+          <p class="muted">Live market scenarios and news events.</p>
+          <div id="scenariosList" class="grid-dashboard" style="grid-template-columns: 1fr;">
+              <!-- JS Populated -->
+              <p>Loading...</p>
           </div>
       </div>
     </main>
   </div>
-  <script type="module" src="/activity.js"></script>
+  <script type="module" src="/scenarios.js"></script>
   <script type="module" src="/js/notifications.js"></script>
   <script>
-      fetch('/api/auth_me.php')
+       fetch('/api/auth_me.php')
         .then(res => res.json())
         .then(data => {
             if (!data.user) window.location = '/';

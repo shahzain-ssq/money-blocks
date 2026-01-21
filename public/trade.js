@@ -52,11 +52,35 @@ async function loadData() {
         opt.value = s.id;
         opt.textContent = `${s.ticker} - ${s.name}`;
         opt.dataset.price = s.current_price || s.initial_price;
+        opt.dataset.ticker = s.ticker;
         select.appendChild(opt);
     });
 
     if (portfolio.portfolio) {
         document.getElementById('cashDisplay').textContent = `Cash: $${parseFloat(portfolio.portfolio.cash_balance).toLocaleString()}`;
+    }
+
+    // Handle Query Params (Pre-select)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tickerParam = urlParams.get('ticker');
+    const actionParam = urlParams.get('action'); // buy, sell
+
+    if (tickerParam) {
+        const stock = stocks.find(s => s.ticker === tickerParam);
+        if (stock) {
+            select.value = stock.id;
+            updatePreview();
+        }
+    }
+
+    if (actionParam && ['buy', 'sell'].includes(actionParam.toLowerCase())) {
+         // Default mode is spot, so just update action
+         currentAction = actionParam.toLowerCase();
+         updateActionButtons('buy', 'sell');
+         document.querySelectorAll('.action-btn').forEach(b => {
+             if (b.dataset.action === currentAction) b.classList.add('active');
+             else b.classList.remove('active');
+         });
     }
 }
 
@@ -123,6 +147,7 @@ function updateUI() {
     const durationGroup = document.getElementById('durationGroup');
     if (currentMode === 'short' && currentAction === 'open') {
         durationGroup.style.display = 'block';
+        loadDurations();
     } else {
         durationGroup.style.display = 'none';
     }
@@ -137,6 +162,29 @@ function updateUI() {
     }
 
     updatePreview();
+}
+
+let durationsLoaded = false;
+async function loadDurations() {
+    if (durationsLoaded) return;
+    try {
+        const res = await fetch('/api/config_options.php');
+        const data = await res.json();
+        const select = document.getElementById('durationSelect');
+        select.innerHTML = '';
+        if (data.durations && data.durations.length > 0) {
+            data.durations.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.duration_seconds;
+                opt.textContent = d.label;
+                select.appendChild(opt);
+            });
+        }
+        durationsLoaded = true;
+        updatePreview(); // Update expiry preview once loaded
+    } catch (e) {
+        console.error('Failed to load durations', e);
+    }
 }
 
 function updatePreview() {

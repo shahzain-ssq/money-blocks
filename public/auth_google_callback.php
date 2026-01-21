@@ -121,4 +121,4 @@ if (!$user) {
     exit;
 }
 
-header('Location: /dashboard.html');
+header('Location: /dashboard');
