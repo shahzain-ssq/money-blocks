@@ -54,11 +54,12 @@
     <aside class="sidebar">
       <div class="brand">MoneyBlocks</div>
       <nav class="nav">
-        <a href="/dashboard.html" class="nav-link">Dashboard</a>
-        <a href="/chart.html" class="nav-link active">Markets & Charts</a>
-        <a href="/trade.html" class="nav-link">Trade</a>
-        <a href="/activity.html" class="nav-link">Activity</a>
-        <a href="/manager.html" class="nav-link" id="managerLink" style="display:none;">Admin</a>
+        <a href="/dashboard" class="nav-link">Dashboard</a>
+        <a href="/chart" class="nav-link active">Markets & Charts</a>
+        <a href="/trade" class="nav-link">Trade</a>
+        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
+        <a href="/activity" class="nav-link">Activity</a>
+        <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
       <div class="sidebar-footer">
           <div id="ws-status" class="status-offline">○ Offline</div>
@@ -95,12 +96,12 @@
       fetch('/api/auth_me.php')
         .then(res => res.json())
         .then(data => {
-            if (!data.user) window.location = '/index.html';
+            if (!data.user) window.location = '/';
             if (data.user.role === 'manager' || data.user.role === 'admin') {
                 document.getElementById('managerLink').style.display = 'block';
             }
         });
-      document.getElementById('logoutBtn').onclick = () => window.location = '/index.html';
+      document.getElementById('logoutBtn').onclick = () => window.location = '/';
   </script>
 </body>
 </html>
