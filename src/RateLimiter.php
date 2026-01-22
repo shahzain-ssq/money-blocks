@@ -13,71 +13,6 @@ interface RateLimitStore
     public function reset(string $key): void;
 }
 
-class FileRateLimitStore implements RateLimitStore
-{
-    private string $directory;
-
-    public function __construct(?string $directory = null)
-    {
-        $this->directory = $directory ?: sys_get_temp_dir();
-    }
-
-    private function getFilePath(string $key): string
-    {
-        return $this->directory . '/auth_attempts_' . md5($key) . '.json';
-    }
-
-    public function get(string $key, int $window): array
-    {
-        $file = $this->getFilePath($key);
-        if (!file_exists($file)) {
-            return ['count' => 0, 'expires_at' => time() + $window];
-        }
-
-        $data = json_decode((string)@file_get_contents($file), true);
-        if (!is_array($data) || !isset($data['count'], $data['expires_at'])) {
-            return ['count' => 0, 'expires_at' => time() + $window];
-        }
-
-        $count = (int)$data['count'];
-        $expiresAt = (int)$data['expires_at'];
-
-        if ($expiresAt <= time()) {
-            return ['count' => 0, 'expires_at' => time() + $window];
-        }
-
-        return ['count' => $count, 'expires_at' => $expiresAt];
-    }
-
-    public function increment(string $key, int $window): int
-    {
-        $data = $this->get($key, $window);
-        if ($data['expires_at'] <= time()) {
-            $data['count'] = 1;
-            $data['expires_at'] = time() + $window;
-        } else {
-            $data['count']++;
-        }
-
-        $payload = json_encode([
-            'count' => $data['count'],
-            'expires_at' => $data['expires_at'],
-        ]);
-
-        file_put_contents($this->getFilePath($key), $payload, LOCK_EX);
-
-        return $data['count'];
-    }
-
-    public function reset(string $key): void
-    {
-        $file = $this->getFilePath($key);
-        if (file_exists($file)) {
-            unlink($file);
-        }
-    }
-}
-
 class RedisRateLimitStore implements RateLimitStore
 {
     private Redis $redis;
@@ -194,7 +129,7 @@ class RateLimitStoreFactory
     public static function create(): RateLimitStore
     {
         $config = require __DIR__ . '/../config/env.php';
-        $backend = $config['rate_limit_backend'] ?? 'file';
+        $backend = $config['rate_limit_backend'] ?? 'db';
 
         if ($backend === 'redis' && class_exists('Redis')) {
             $redisHost = $config['redis_host'] ?? '127.0.0.1';
@@ -214,17 +149,12 @@ class RateLimitStoreFactory
                 }
                 return new RedisRateLimitStore($redis);
             } catch (Throwable $e) {
-                error_log('Falling back to file rate limit store: ' . $e->getMessage());
-            }
-        } elseif ($backend === 'db') {
-            try {
-                return new DatabaseRateLimitStore(Database::getConnection());
-            } catch (Throwable $e) {
-                error_log('Falling back to file rate limit store: ' . $e->getMessage());
+                error_log('Redis connection failed, falling back to database: ' . $e->getMessage());
             }
         }
 
-        return new FileRateLimitStore();
+        // Default to DatabaseRateLimitStore
+        return new DatabaseRateLimitStore(Database::getConnection());
     }
 }
 

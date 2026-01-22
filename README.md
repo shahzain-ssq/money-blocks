@@ -6,7 +6,7 @@ A trading simulation platform with institution-scoped events and stock market me
 
 - **Backend**: PHP 8.x (API)
 - **Frontend**: Vanilla HTML/JS (SPA-like navigation)
-- **Database**: MySQL/MariaDB (Schema in `sql/schema.sql`). *SQLite is also partially supported for development but MySQL is recommended for production `NOW()` compatibility.*
+- **Database**: MySQL/MariaDB (Schema in `sql/schema.sql`).
 - **Real-time**: Python WebSocket Server (`websocket/server.py`)
 
 ## Setup
@@ -14,6 +14,11 @@ A trading simulation platform with institution-scoped events and stock market me
 ### 1. Database
 Import `sql/schema.sql` into your MySQL database.
 Configure database connection in `config/env.php`.
+
+**Migrations:**
+For updates to an existing database:
+1.  Check `sql/migrations/` for new SQL files.
+2.  Run the files in chronological order against your database (e.g., via phpMyAdmin).
 
 ### 2. Web Server
 Serve the repository root.
