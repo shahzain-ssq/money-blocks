@@ -13,10 +13,10 @@ if ($method === 'GET') {
     $q = trim($_GET['q'] ?? '');
     if ($q !== '') {
         $like = '%' . $q . '%';
-        $stmt = $pdo->prepare('SELECT u.id, u.email, u.username, p.cash_balance FROM users u LEFT JOIN portfolios p ON p.user_id = u.id WHERE u.institution_id = ? AND (u.username LIKE ? OR u.email LIKE ?) ORDER BY u.id');
+        $stmt = $pdo->prepare('SELECT u.id, u.email, u.username, u.role, p.cash_balance FROM users u LEFT JOIN portfolios p ON p.user_id = u.id WHERE u.institution_id = ? AND (u.username LIKE ? OR u.email LIKE ?) ORDER BY u.id');
         $stmt->execute([$user['institution_id'], $like, $like]);
     } else {
-        $stmt = $pdo->prepare('SELECT u.id, u.email, u.username, p.cash_balance FROM users u LEFT JOIN portfolios p ON p.user_id = u.id WHERE u.institution_id = ? ORDER BY u.id');
+        $stmt = $pdo->prepare('SELECT u.id, u.email, u.username, u.role, p.cash_balance FROM users u LEFT JOIN portfolios p ON p.user_id = u.id WHERE u.institution_id = ? ORDER BY u.id');
         $stmt->execute([$user['institution_id']]);
     }
     $participants = $stmt->fetchAll();
@@ -42,7 +42,7 @@ if ($method === 'PUT') {
         jsonResponse(['error' => 'user_not_found'], 404);
     }
 
-    $update = $pdo->prepare('UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?');
+    $update = $pdo->prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
     $update->execute([$role, $id]);
     jsonResponse(['ok' => true]);
 }
@@ -69,7 +69,7 @@ if ($method === 'POST') {
     }
     $tempPassword = bin2hex(random_bytes(4));
     $hash = password_hash($tempPassword, PASSWORD_DEFAULT);
-    $insert = $pdo->prepare('INSERT INTO users (institution_id, email, username, role, password_hash, created_at, updated_at) VALUES (?, ?, ?, "student", ?, NOW(), NOW())');
+    $insert = $pdo->prepare('INSERT INTO users (institution_id, email, username, role, password_hash, created_at, updated_at) VALUES (?, ?, ?, "student", ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
     $insert->execute([$user['institution_id'], $email, $username, $hash]);
     $id = $pdo->lastInsertId();
     jsonResponse(['ok' => true, 'participant' => ['id' => $id, 'email' => $email, 'username' => $username], 'temp_password' => $tempPassword]);

@@ -14,7 +14,7 @@ class ScenarioService
     public static function create(int $institutionId, string $title, string $description, string $status, ?string $startsAt): int
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())');
+        $stmt = $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
         $stmt->execute([$institutionId, $title, $description, $status, $startsAt]);
         return (int)$pdo->lastInsertId();
     }
@@ -22,14 +22,14 @@ class ScenarioService
     public static function update(int $id, int $institutionId, string $title, string $description, string $status, ?string $startsAt): bool
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+        $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
         return $stmt->execute([$title, $description, $status, $startsAt, $id, $institutionId]);
     }
 
     public static function getLiveForUser(int $userId, int $institutionId): array
     {
         $pdo = Database::getConnection();
-        // Live scenarios: status='published' AND starts_at <= NOW() (or null, if immediate).
+        // Live scenarios: status='published' AND starts_at <= CURRENT_TIMESTAMP (or null, if immediate).
         // We assume starts_at is UTC.
         // Also fetch read status.
         $sql = "SELECT s.*,
@@ -38,7 +38,7 @@ class ScenarioService
                 LEFT JOIN scenario_reads sr ON s.id = sr.scenario_id AND sr.user_id = ?
                 WHERE s.institution_id = ?
                   AND s.status = 'published'
-                  AND (s.starts_at IS NULL OR s.starts_at <= NOW())
+                  AND (s.starts_at IS NULL OR s.starts_at <= CURRENT_TIMESTAMP)
                 ORDER BY s.starts_at DESC, s.created_at DESC";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$userId, $institutionId]);
@@ -53,7 +53,7 @@ class ScenarioService
         $stmt->execute([$userId, $scenarioId]);
         if ($stmt->fetch()) return true;
 
-        $stmt = $pdo->prepare('INSERT INTO scenario_reads (user_id, scenario_id, read_at) VALUES (?, ?, NOW())');
+        $stmt = $pdo->prepare('INSERT INTO scenario_reads (user_id, scenario_id, read_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
         return $stmt->execute([$userId, $scenarioId]);
     }
 
@@ -76,7 +76,7 @@ class ScenarioService
                 LEFT JOIN scenario_reads sr ON s.id = sr.scenario_id AND sr.user_id = ?
                 WHERE s.institution_id = ?
                   AND s.status = 'published'
-                  AND (s.starts_at IS NULL OR s.starts_at <= NOW())
+                  AND (s.starts_at IS NULL OR s.starts_at <= CURRENT_TIMESTAMP)
                   AND sr.read_at IS NULL";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$userId, $institutionId]);

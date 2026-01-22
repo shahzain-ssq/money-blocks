@@ -26,7 +26,7 @@ if ($method === 'POST') {
     $endsAt = $input['ends_at'] ?? null;
     validateTimeRange($startsAt, $endsAt);
 
-    $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, ends_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())')
+    $pdo->prepare('INSERT INTO crisis_scenarios (institution_id, title, description, status, starts_at, ends_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)')
         ->execute([
             $user['institution_id'],
             $title,
@@ -69,7 +69,7 @@ if ($method === 'PUT') {
         jsonResponse(['error' => 'not_found'], 404);
     }
 
-    $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = NOW() WHERE id = ? AND institution_id = ?');
+    $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
     $stmt->execute([
         $title,
         $input['description'] ?? '',

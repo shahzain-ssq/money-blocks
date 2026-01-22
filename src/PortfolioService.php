@@ -24,7 +24,7 @@ class PortfolioService
         $stmt->execute([$userId]);
         $portfolio = $stmt->fetch();
         if (!$portfolio) {
-            $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, NOW(), NOW())')->execute([$userId]);
+            $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)')->execute([$userId]);
             $portfolio = ['id' => $pdo->lastInsertId(), 'user_id' => $userId, 'cash_balance' => 100000];
         }
         $priceSubquery = self::getCurrentPriceSubquery('s');

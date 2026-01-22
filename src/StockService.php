@@ -49,8 +49,8 @@ class StockService
             throw new RuntimeException('Stock not found for institution');
         }
 
-        $pdo->prepare('INSERT INTO stock_prices (stock_id, price, created_at) VALUES (?, ?, NOW())')->execute([$stockId, $price]);
-        $pdo->prepare('UPDATE stocks SET updated_at = NOW() WHERE id = ? AND institution_id = ?')->execute([$stockId, $institutionId]);
+        $pdo->prepare('INSERT INTO stock_prices (stock_id, price, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)')->execute([$stockId, $price]);
+        $pdo->prepare('UPDATE stocks SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?')->execute([$stockId, $institutionId]);
     }
 
     public static function latestPrice(int $stockId, int $institutionId): ?array

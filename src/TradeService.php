@@ -17,8 +17,8 @@ class TradeService
             return ['error' => 'insufficient_cash'];
         }
         self::applyPositionChange($pdo, $portfolio['id'], $stockId, $quantity, $price);
-        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance - ?, updated_at = NOW() WHERE id = ?')->execute([$cost, $portfolio['id']]);
-        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "BUY", ?, ?, NOW())')->execute([$portfolio['id'], $stockId, $quantity, $price]);
+        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$cost, $portfolio['id']]);
+        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "BUY", ?, ?, CURRENT_TIMESTAMP)')->execute([$portfolio['id'], $stockId, $quantity, $price]);
         $pdo->commit();
         return ['status' => 'ok', 'price' => $price];
     }
@@ -41,10 +41,10 @@ class TradeService
         if ($newQty == 0) {
             $pdo->prepare('DELETE FROM positions WHERE id = ?')->execute([$position['id']]);
         } else {
-            $pdo->prepare('UPDATE positions SET quantity = ?, updated_at = NOW() WHERE id = ?')->execute([$newQty, $position['id']]);
+            $pdo->prepare('UPDATE positions SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$newQty, $position['id']]);
         }
-        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = NOW() WHERE id = ?')->execute([$price * $quantity, $portfolio['id']]);
-        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SELL", ?, ?, NOW())')->execute([$portfolio['id'], $stockId, $quantity, $price]);
+        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$price * $quantity, $portfolio['id']]);
+        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SELL", ?, ?, CURRENT_TIMESTAMP)')->execute([$portfolio['id'], $stockId, $quantity, $price]);
         $pdo->commit();
         return ['status' => 'ok', 'price' => $price];
     }
@@ -57,9 +57,9 @@ class TradeService
         $stock = self::loadStock($pdo, $stockId, $institutionId);
         $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
         $expiresAt = (new DateTimeImmutable())->modify("+{$durationSeconds} seconds");
-        $pdo->prepare('INSERT INTO short_positions (portfolio_id, stock_id, quantity, open_price, open_at, duration_seconds, expires_at, closed) VALUES (?, ?, ?, ?, NOW(), ?, ?, 0)')
+        $pdo->prepare('INSERT INTO short_positions (portfolio_id, stock_id, quantity, open_price, open_at, duration_seconds, expires_at, closed) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, 0)')
             ->execute([$portfolio['id'], $stockId, $quantity, $price, $durationSeconds, $expiresAt->format('Y-m-d H:i:s')]);
-        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_OPEN", ?, ?, NOW())')
+        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_OPEN", ?, ?, CURRENT_TIMESTAMP)')
             ->execute([$portfolio['id'], $stockId, $quantity, $price]);
         $pdo->commit();
         return ['status' => 'ok', 'open_price' => $price, 'expires_at' => $expiresAt->format(DateTimeInterface::ATOM)];
@@ -90,7 +90,7 @@ class TradeService
 
             if ($canClose == $short['quantity']) {
                 // Close full position
-                $pdo->prepare('UPDATE short_positions SET closed = 1, close_price = ?, close_at = NOW() WHERE id = ?')->execute([$price, $short['id']]);
+                $pdo->prepare('UPDATE short_positions SET closed = 1, close_price = ?, close_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$price, $short['id']]);
             } else {
                 // Partial close - split the position?
                 // The DB schema doesn't easily support partial closes on a single row without reducing quantity.
@@ -134,10 +134,10 @@ class TradeService
              return ['error' => 'insufficient_shorts'];
         }
 
-        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = NOW() WHERE id = ?')
+        $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
             ->execute([$totalProfit, $portfolio['id']]);
 
-        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_CLOSE", ?, ?, NOW())')
+        $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_CLOSE", ?, ?, CURRENT_TIMESTAMP)')
             ->execute([$portfolio['id'], $stockId, $quantity, $price]);
 
         $pdo->commit();
@@ -151,17 +151,17 @@ class TradeService
         $stmt = $pdo->prepare('SELECT sp.*, p.user_id, s.initial_price FROM short_positions sp
             JOIN portfolios p ON sp.portfolio_id = p.id
             JOIN stocks s ON sp.stock_id = s.id AND s.institution_id = ?
-            WHERE sp.closed = 0 AND sp.expires_at <= NOW() FOR UPDATE');
+            WHERE sp.closed = 0 AND sp.expires_at <= CURRENT_TIMESTAMP FOR UPDATE');
         $stmt->execute([$institutionId]);
         $closed = [];
         foreach ($stmt->fetchAll() as $short) {
             $price = self::currentPrice($pdo, $short['stock_id'], $short['initial_price'], $institutionId);
             $profit = ($short['open_price'] - $price) * $short['quantity'];
-            $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = NOW() WHERE id = ?')
+            $pdo->prepare('UPDATE portfolios SET cash_balance = cash_balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                 ->execute([$profit, $short['portfolio_id']]);
-            $pdo->prepare('UPDATE short_positions SET closed = 1, close_price = ?, close_at = NOW() WHERE id = ?')
+            $pdo->prepare('UPDATE short_positions SET closed = 1, close_price = ?, close_at = CURRENT_TIMESTAMP WHERE id = ?')
                 ->execute([$price, $short['id']]);
-            $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_CLOSE", ?, ?, NOW())')
+            $pdo->prepare('INSERT INTO trades (portfolio_id, stock_id, type, quantity, price, created_at) VALUES (?, ?, "SHORT_CLOSE", ?, ?, CURRENT_TIMESTAMP)')
                 ->execute([$short['portfolio_id'], $short['stock_id'], $short['quantity'], $price]);
             $closed[] = ['id' => $short['id'], 'close_price' => $price];
         }
@@ -175,7 +175,7 @@ class TradeService
         $stmt->execute([$userId]);
         $portfolio = $stmt->fetch();
         if (!$portfolio) {
-            $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, NOW(), NOW())')->execute([$userId]);
+            $pdo->prepare('INSERT INTO portfolios (user_id, cash_balance, created_at, updated_at) VALUES (?, 100000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)')->execute([$userId]);
             $stmt->execute([$userId]);
             $portfolio = $stmt->fetch();
         }
@@ -209,10 +209,10 @@ class TradeService
         if ($position) {
             $newQty = $position['quantity'] + $quantity;
             $newAvg = (($position['avg_price'] * $position['quantity']) + ($price * $quantity)) / $newQty;
-            $pdo->prepare('UPDATE positions SET quantity = ?, avg_price = ?, updated_at = NOW() WHERE id = ?')
+            $pdo->prepare('UPDATE positions SET quantity = ?, avg_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
                 ->execute([$newQty, $newAvg, $position['id']]);
         } else {
-            $pdo->prepare('INSERT INTO positions (portfolio_id, stock_id, quantity, avg_price, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())')
+            $pdo->prepare('INSERT INTO positions (portfolio_id, stock_id, quantity, avg_price, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)')
                 ->execute([$portfolioId, $stockId, $quantity, $price]);
         }
     }
