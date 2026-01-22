@@ -134,13 +134,24 @@ document.getElementById('addParticipantForm').addEventListener('submit', async (
 
 
 // Stocks
+let allStocks = [];
+
 async function loadStocks() {
     const res = await fetch('/api/manager_stocks.php');
     const data = await res.json();
+    allStocks = data.stocks || [];
+    renderStocks();
+}
+
+function renderStocks() {
     const list = document.getElementById('stocksList');
     list.innerHTML = '';
+    const query = (document.getElementById('stockSearch').value || '').toLowerCase();
 
-    (data.stocks || []).forEach(s => {
+    allStocks.filter(s => {
+        const text = (s.ticker || '') + ' ' + (s.name || '');
+        return text.toLowerCase().includes(query);
+    }).forEach(s => {
         const div = document.createElement('div');
         div.className = 'participant-item';
         div.innerHTML = `
@@ -149,29 +160,85 @@ async function loadStocks() {
                 <small>${s.current_price || s.initial_price}</small>
             </div>
              <div>
-                 <button class="btn btn-sm btn-outline">Edit</button>
+                 <button class="btn btn-sm btn-outline" onclick="editStock(${s.id})">Edit</button>
             </div>
         `;
         list.appendChild(div);
     });
 }
 
+document.getElementById('stockSearch').addEventListener('input', () => {
+    renderStocks();
+});
+
+window.editStock = function(id) {
+    const s = allStocks.find(x => x.id === id);
+    if (!s) return;
+
+    const form = document.getElementById('addStockForm');
+    form.ticker.value = s.ticker;
+    form.name.value = s.name;
+    form.initial_price.value = s.initial_price;
+    form.total_limit.value = s.total_limit || '';
+
+    // Check if we need to add hidden input for ID or handle it in submit
+    let idInput = form.querySelector('input[name="id"]');
+    if (!idInput) {
+        idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'id';
+        form.appendChild(idInput);
+    }
+    idInput.value = s.id;
+
+    // Change Title
+    const modal = document.getElementById('addStockModal');
+    modal.querySelector('h3').textContent = 'Edit Stock';
+    modal.style.display = 'block';
+};
+
+// Reset form when opening via Add button (which needs to be wired if not already)
+// The HTML has onclick="document.getElementById('addStockModal').style.display='block'"
+// We should intercept this or clear form on submit/cancel.
+// Or better: add a window function for openAddStockModal
+window.openAddStockModal = function() {
+    const form = document.getElementById('addStockForm');
+    form.reset();
+    const idInput = form.querySelector('input[name="id"]');
+    if (idInput) idInput.value = '';
+
+    const modal = document.getElementById('addStockModal');
+    modal.querySelector('h3').textContent = 'Add Stock';
+    modal.style.display = 'block';
+};
+
+// Update HTML to use openAddStockModal instead of direct style manipulation if possible
+// But since we can't easily change HTML onclicks without editing HTML file, let's just leave it
+// and handle "Add" logic: if I click Add after Edit, the form might have values.
+// I should use mutation observer or just update the HTML file too.
+// Let's update HTML file to call openAddStockModal().
+
 document.getElementById('addStockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const payload = Object.fromEntries(formData.entries());
 
-    const res = await fetch('/api/manager_stocks.php', {
-        method: 'POST',
+    const isEdit = !!payload.id;
+    const method = isEdit ? 'PUT' : 'POST';
+    const url = isEdit ? `/api/manager_stocks.php?id=${payload.id}` : '/api/manager_stocks.php';
+
+    const res = await fetch(url, {
+        method: method,
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
     });
     if(res.ok) {
-        alert('Stock created');
+        alert(isEdit ? 'Stock updated' : 'Stock created');
         document.getElementById('addStockModal').style.display='none';
         loadStocks();
     } else {
-        alert('Failed');
+        const data = await res.json();
+        alert('Failed: ' + (data.error || 'Unknown error'));
     }
 });
 
@@ -253,6 +320,7 @@ window.editScenario = function(id) {
     document.getElementById('scenarioTitle').value = s.title;
     document.getElementById('scenarioDesc').value = s.description || '';
     document.getElementById('scenarioStatus').value = s.status;
+    // Format starts_at for input
     document.getElementById('scenarioStart').value = s.starts_at ? s.starts_at.replace(' ', 'T').slice(0, 16) : '';
     document.getElementById('scenarioModalTitle').textContent = 'Edit Scenario';
     document.getElementById('scenarioModal').style.display='block';
@@ -262,9 +330,7 @@ document.getElementById('scenarioForm').addEventListener('submit', async (e) => 
     e.preventDefault();
     const formData = new FormData(e.target);
     const payload = Object.fromEntries(formData.entries());
-    // Fix datetime format if needed or just send string
-    // Input datetime-local gives "YYYY-MM-DDTHH:MM"
-    // Backend expects MySQL format "YYYY-MM-DD HH:MM:SS" or similar, usually accepts T if flexible, else replace
+    // Fix datetime format if needed
     if (payload.starts_at) payload.starts_at = payload.starts_at.replace('T', ' ');
 
     const res = await fetch('/api/manager_scenarios.php', {

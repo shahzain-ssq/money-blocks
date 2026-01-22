@@ -1,15 +1,12 @@
 import { WebSocketManager } from './js/ws-manager.js';
 
 let currentMode = 'spot'; // 'spot' or 'short'
-let currentAction = 'buy'; // 'buy', 'sell' (for spot), 'open', 'close' (for short - though close is handled via positions list usually, but prompt asked for unified)
-// Wait, prompt says: "Short: Open / Close". If I am on the trade page, "Close" usually means closing an existing position.
-// I will interpret "Short > Close" as a mode where you select an active short to close.
-// But typically, you close from the portfolio.
-// However, I will support "Close Short" mode if the user selects it, filtering by active shorts.
+let currentAction = 'buy'; // 'buy', 'sell' (for spot), 'open', 'close' (for short)
 
 let stocks = [];
 let portfolio = null;
-let currentPrice = 0;
+let positions = [];
+let shorts = [];
 
 async function init() {
     // Load config and auth
@@ -34,53 +31,75 @@ async function init() {
 }
 
 async function loadData() {
-    const [stocksRes, portfolioRes] = await Promise.all([
-        fetch('/api/stocks.php'),
-        fetch('/api/portfolio.php')
-    ]);
-    const stocksData = await stocksRes.json();
-    const portfolioData = await portfolioRes.json();
+    try {
+        const [stocksRes, portfolioRes] = await Promise.all([
+            fetch('/api/stocks.php'),
+            fetch('/api/portfolio.php')
+        ]);
+        const stocksData = await stocksRes.json();
+        const portfolioData = await portfolioRes.json();
 
-    stocks = stocksData.stocks;
-    portfolio = portfolioData;
+        stocks = stocksData.stocks || [];
+        portfolio = portfolioData.portfolio;
+        positions = portfolioData.positions || [];
+        shorts = portfolioData.shorts || [];
 
-    // Populate Stock Select
-    const select = document.getElementById('stockSelect');
-    select.innerHTML = '';
-    stocks.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = `${s.ticker} - ${s.name}`;
-        opt.dataset.price = s.current_price || s.initial_price;
-        opt.dataset.ticker = s.ticker;
-        select.appendChild(opt);
-    });
+        // Populate Stock Select
+        const select = document.getElementById('stockSelect');
+        // Save current selection if exists
+        const currentSelection = select.value;
+        select.innerHTML = '';
 
-    if (portfolio.portfolio) {
-        document.getElementById('cashDisplay').textContent = `Cash: $${parseFloat(portfolio.portfolio.cash_balance).toLocaleString()}`;
-    }
-
-    // Handle Query Params (Pre-select)
-    const urlParams = new URLSearchParams(window.location.search);
-    const tickerParam = urlParams.get('ticker');
-    const actionParam = urlParams.get('action'); // buy, sell
-
-    if (tickerParam) {
-        const stock = stocks.find(s => s.ticker === tickerParam);
-        if (stock) {
-            select.value = stock.id;
-            updatePreview();
+        if (stocks.length === 0) {
+            select.innerHTML = '<option disabled>No stocks available</option>';
+        } else {
+            stocks.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = `${s.ticker} - ${s.name}`;
+                opt.dataset.price = s.current_price || s.initial_price;
+                opt.dataset.ticker = s.ticker;
+                select.appendChild(opt);
+            });
         }
-    }
 
-    if (actionParam && ['buy', 'sell'].includes(actionParam.toLowerCase())) {
-         // Default mode is spot, so just update action
-         currentAction = actionParam.toLowerCase();
-         updateActionButtons('buy', 'sell');
-         document.querySelectorAll('.action-btn').forEach(b => {
-             if (b.dataset.action === currentAction) b.classList.add('active');
-             else b.classList.remove('active');
-         });
+        // Restore selection or default
+        if (currentSelection && stocks.find(s => s.id == currentSelection)) {
+            select.value = currentSelection;
+        }
+
+        if (portfolio) {
+            document.getElementById('cashDisplay').textContent = `Cash: €${parseFloat(portfolio.cash_balance).toLocaleString()}`;
+        }
+
+        // Handle Query Params (Pre-select)
+        const urlParams = new URLSearchParams(window.location.search);
+        const tickerParam = urlParams.get('ticker');
+        const actionParam = urlParams.get('action'); // buy, sell
+
+        if (tickerParam) {
+            const stock = stocks.find(s => s.ticker === tickerParam);
+            if (stock) {
+                select.value = stock.id;
+            }
+        }
+
+        if (actionParam && ['buy', 'sell'].includes(actionParam.toLowerCase())) {
+             currentAction = actionParam.toLowerCase();
+             // Determine mode
+             // If short action is passed? usually buy/sell are spot.
+             updateActionButtons('buy', 'sell'); // default spot
+             document.querySelectorAll('.action-btn').forEach(b => {
+                 if (b.dataset.action === currentAction) b.classList.add('active');
+                 else b.classList.remove('active');
+             });
+        }
+
+        updatePreview();
+
+    } catch (e) {
+        console.error("Failed to load data", e);
+        alert("Failed to load trading data. Please refresh.");
     }
 }
 
@@ -107,7 +126,7 @@ function setupEventListeners() {
     // Action Buttons
     document.querySelectorAll('.action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.preventDefault(); // prevent form submit if inside form
+            e.preventDefault();
             document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentAction = btn.dataset.action;
@@ -143,7 +162,6 @@ function updateActionButtons(label1, label2) {
 }
 
 function updateUI() {
-    // Show/Hide Duration
     const durationGroup = document.getElementById('durationGroup');
     if (currentMode === 'short' && currentAction === 'open') {
         durationGroup.style.display = 'block';
@@ -151,16 +169,6 @@ function updateUI() {
     } else {
         durationGroup.style.display = 'none';
     }
-
-    // Handle "Close Short" - we might need to change stock select to only show active shorts?
-    // For simplicity, we keep the full list but validate on submit, or better, filter the list.
-    const stockSelect = document.getElementById('stockSelect');
-    if (currentMode === 'short' && currentAction === 'close') {
-        // Filter options to only those with active shorts
-        // But re-populating select is annoying.
-        // Let's just update preview.
-    }
-
     updatePreview();
 }
 
@@ -179,9 +187,13 @@ async function loadDurations() {
                 opt.textContent = d.label;
                 select.appendChild(opt);
             });
+            // Select first one by default
+            select.selectedIndex = 0;
+        } else {
+             select.innerHTML = '<option value="" disabled>No durations available</option>';
         }
         durationsLoaded = true;
-        updatePreview(); // Update expiry preview once loaded
+        updatePreview();
     } catch (e) {
         console.error('Failed to load durations', e);
     }
@@ -189,64 +201,143 @@ async function loadDurations() {
 
 function updatePreview() {
     const stockId = document.getElementById('stockSelect').value;
-    const qty = parseInt(document.getElementById('quantityInput').value) || 0;
+    const qtyInput = document.getElementById('quantityInput');
+    const qty = parseFloat(qtyInput.value); // Allow float? Usually stocks are ints. But JS handles numbers.
+    // Ensure numeric
+    if (isNaN(qty) || qty < 0) {
+         // Maybe just show invalid?
+    }
+
     const stock = stocks.find(s => s.id == stockId);
+    const submitBtn = document.getElementById('submitBtn');
+    const msg = document.getElementById('validationMsg') || createValidationMsg();
+    msg.textContent = '';
+    submitBtn.disabled = false;
 
     if (!stock) return;
 
     const price = parseFloat(stock.current_price || stock.initial_price);
     const total = price * qty;
 
-    document.getElementById('previewPrice').textContent = `$${price.toFixed(2)}`;
-    document.getElementById('previewTotal').textContent = `$${total.toFixed(2)}`;
+    // Display Holdings Info
+    displayHoldingsInfo(stockId);
 
-    // Balance Projection
-    const currentCash = parseFloat(portfolio.portfolio.cash_balance);
+    document.getElementById('previewPrice').textContent = `€${price.toFixed(2)}`;
+    document.getElementById('previewTotal').textContent = `€${(total || 0).toFixed(2)}`;
+
+    // Balance Projection & Validation
+    if (!portfolio) return;
+
+    const currentCash = parseFloat(portfolio.cash_balance);
     let newBalance = currentCash;
+    let isValid = true;
+    let errorText = '';
+
+    if (qty <= 0 || isNaN(qty)) {
+        isValid = false;
+        errorText = "Enter a valid quantity.";
+    }
 
     if (currentMode === 'spot') {
         if (currentAction === 'buy') {
              newBalance -= total;
+             if (newBalance < 0) {
+                 isValid = false;
+                 errorText = `Insufficient funds. You need €${(total - currentCash).toFixed(2)} more.`;
+             }
         } else {
+             // Sell validation
              newBalance += total;
+             const pos = positions.find(p => p.stock_id == stockId);
+             const owned = pos ? parseInt(pos.quantity) : 0;
+             if (qty > owned) {
+                 isValid = false;
+                 errorText = `Insufficient holdings. You own ${owned}.`;
+             }
         }
     } else if (currentMode === 'short') {
         if (currentAction === 'open') {
-             // Usually short opening credits cash? Or holds collateral?
-             // In this simple model (based on TradeService):
-             // Open Short -> No immediate cash change? Or maybe you get cash?
-             // Checking TradeService.php openShort:
-             // It inserts into short_positions. It DOES NOT update cash balance?
-             // Wait, normally shorting sells the stock, so you get cash but have a liability.
-             // Let's check TradeService again.
-             // TradeService::openShort ... NO UPDATE to portfolios cash_balance.
-             // That seems like a bug or a specific game rule (margin not realized until close?).
-             // Ah, wait. If you short, you sell borrowed shares. You SHOULD get cash.
-             // But maybe the "margin" requirement locks it?
-             // If the code doesn't give cash, I won't display it.
-             // I should probably FIX this if it's a "bug" but the prompt says "Fix any related bugs".
-             // If I don't get cash, I can't buy anything else with it?
-             // But if I close, I pay the current price.
-             // TradeService::closeExpiredShorts:
-             // $profit = ($open_price - $current_price) * $qty;
-             // cash_balance += $profit.
-             // So it's a "Contract for Difference" (CFD) style short. You don't get the cash upfront. You just get the PnL at the end.
-             // So Cost is 0 (ignoring fees/margin).
+             // Validate limits if any
+             const shortLimit = parseInt(stock.per_user_short_limit);
+             // We need to count ACTIVE shorts for this stock?
+             // Or is the limit global per user per stock?
+             // The API check is `StockService` or `TradeService`.
+             // Assuming limit check happens on backend, but we can hint.
+             // Also min quantity check?
+        } else {
+             // Close Short
+             // Find active short positions
+             // Logic: We might have multiple short positions for same stock with different expiries.
+             // We sum them up for validation?
+             const stockShorts = shorts.filter(s => s.stock_id == stockId && s.closed == 0);
+             const totalShortQty = stockShorts.reduce((sum, s) => sum + parseInt(s.quantity), 0);
+
+             if (qty > totalShortQty) {
+                 isValid = false;
+                 errorText = `Cannot close more than open short position (${totalShortQty}).`;
+             }
         }
     }
 
-    document.getElementById('previewBalance').textContent = `$${newBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+    document.getElementById('previewBalance').textContent = `€${newBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+
+    if (!isValid) {
+        submitBtn.disabled = true;
+        msg.textContent = errorText;
+        msg.style.color = 'var(--danger-color)';
+    } else {
+        msg.textContent = '';
+    }
 
     // Expiry
     const expiryRow = document.getElementById('expiryRow');
     if (currentMode === 'short' && currentAction === 'open') {
         expiryRow.style.display = 'flex';
-        const duration = parseInt(document.getElementById('durationSelect').value);
-        const expiresAt = new Date(Date.now() + duration * 1000);
-        document.getElementById('previewExpiry').textContent = expiresAt.toLocaleString();
+        const duration = parseInt(document.getElementById('durationSelect').value) || 0;
+        if (duration > 0) {
+            const expiresAt = new Date(Date.now() + duration * 1000);
+            document.getElementById('previewExpiry').textContent = expiresAt.toLocaleString();
+        } else {
+            document.getElementById('previewExpiry').textContent = '-';
+        }
     } else {
         expiryRow.style.display = 'none';
     }
+}
+
+function displayHoldingsInfo(stockId) {
+    // Add or update an element under the Stock Select
+    let infoEl = document.getElementById('holdingsInfo');
+    if (!infoEl) {
+        infoEl = document.createElement('div');
+        infoEl.id = 'holdingsInfo';
+        infoEl.style.fontSize = '0.85rem';
+        infoEl.style.marginTop = '0.5rem';
+        infoEl.style.color = 'var(--text-muted)';
+        document.getElementById('stockSelect').parentNode.appendChild(infoEl);
+    }
+
+    if (currentMode === 'spot') {
+        const pos = positions.find(p => p.stock_id == stockId);
+        const owned = pos ? pos.quantity : 0;
+        infoEl.textContent = `Owned: ${owned}`;
+        infoEl.style.color = owned > 0 ? 'var(--success-color)' : 'var(--text-muted)';
+    } else {
+        // Show Short info
+        const stockShorts = shorts.filter(s => s.stock_id == stockId && s.closed == 0);
+        const totalShortQty = stockShorts.reduce((sum, s) => sum + parseInt(s.quantity), 0);
+        infoEl.textContent = `Open Shorts: ${totalShortQty}`;
+        infoEl.style.color = totalShortQty > 0 ? 'var(--warning-color)' : 'var(--text-muted)';
+    }
+}
+
+function createValidationMsg() {
+    const div = document.createElement('div');
+    div.id = 'validationMsg';
+    div.style.marginTop = '1rem';
+    div.style.fontWeight = '500';
+    document.getElementById('tradeForm').appendChild(div);
+    return div;
 }
 
 async function handleTrade(e) {
@@ -256,6 +347,7 @@ async function handleTrade(e) {
     const duration = document.getElementById('durationSelect').value;
 
     let endpoint = '';
+    // Corrected Payload: always send duration_seconds for shorts
     let payload = { stock_id: stockId, quantity: qty };
 
     if (currentMode === 'spot') {
@@ -263,16 +355,15 @@ async function handleTrade(e) {
     } else {
         if (currentAction === 'open') {
             endpoint = '/api/trades_short_open.php';
-            payload.duration = duration;
+            payload.duration_seconds = duration; // FIXED: Changed from duration to duration_seconds
         } else {
-            // Close Short
             endpoint = '/api/trades_short_close.php';
-            // We need to know WHICH short position to close if there are multiple?
-            // Or does the API handle "close all for this stock" or "reduce quantity"?
-            // I need to implement trades_short_close.php first.
-            // If I implement it to close by stock_id and qty (LIFO or FIFO), that works.
         }
     }
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
 
     try {
         const res = await fetch(endpoint, {
@@ -283,14 +374,30 @@ async function handleTrade(e) {
         const data = await res.json();
 
         if (res.ok && !data.error) {
-            alert('Trade Successful');
-            loadData(); // Refresh data
+            // alert('Trade Successful');
+            // Show inline success message or toast
+            const msg = document.getElementById('validationMsg');
+            msg.textContent = 'Trade Successful!';
+            msg.style.color = 'var(--success-color)';
+
+            await loadData(); // Refresh data
+
+            // Reset quantity?
+            document.getElementById('quantityInput').value = 1;
+            updatePreview();
         } else {
-            alert(`Trade Failed: ${data.error}`);
+            const msg = document.getElementById('validationMsg');
+            msg.textContent = `Trade Failed: ${data.error || 'Unknown Error'}`;
+            msg.style.color = 'var(--danger-color)';
         }
     } catch (err) {
         console.error(err);
-        alert('Trade Failed');
+        const msg = document.getElementById('validationMsg');
+        msg.textContent = 'Trade Failed: Network or Server Error';
+        msg.style.color = 'var(--danger-color)';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Trade';
     }
 }
 

@@ -37,7 +37,7 @@ function renderInstitutionList(list) {
     btn.className = 'list-item-btn'; // Need to add style
     btn.textContent = i.name;
     btn.style.width = '100%';
-    btn.style.textAlign = 'left';
+    btn.style.textAlign = 'center';
     btn.style.padding = '0.75rem';
     btn.style.border = '1px solid var(--border-color, #334155)';
     btn.style.marginBottom = '0.5rem';

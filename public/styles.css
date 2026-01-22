@@ -1,3 +1,46 @@
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+}
+
+/* WebSocket Status Indicator */
+#ws-status {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 9999;
+  background-color: var(--bg-card);
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 :root {
   --bg-main: #0f172a;
   --bg-card: #1e293b;
@@ -13,31 +56,6 @@
 
 * {
   box-sizing: border-box;
-}
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-main);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--bg-hover);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-color);
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-hover) var(--bg-main);
 }
 
 body {
@@ -110,13 +128,6 @@ body {
     margin-top: auto;
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
-    /* Make status sticky at bottom of sidebar if sidebar scrolls?
-       Actually, if sidebar is height: 100vh and flex col, footer is at bottom.
-       If nav grows, it pushes footer.
-    */
-    position: sticky;
-    bottom: 0;
-    background: var(--bg-card);
     padding-bottom: 1rem;
 }
 
@@ -347,23 +358,8 @@ body {
   }
 
   .sidebar-footer {
-      /* Keep visible or handle spacing */
       border: none;
       padding: 0;
-  }
-
-  /* Move status indicator to fixed position on mobile */
-  #ws-status {
-      position: fixed;
-      bottom: 1rem;
-      right: 1rem;
-      background: var(--bg-card);
-      padding: 0.5rem 1rem;
-      border: 1px solid var(--border-color);
-      border-radius: 20px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-      z-index: 100;
-      display: flex !important; /* Ensure visibility */
   }
 
   .chart-container {
