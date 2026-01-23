@@ -52,14 +52,32 @@ class StockService
     public static function updatePrice(int $stockId, float $price, int $institutionId): void
     {
         $pdo = Database::getConnection();
-        $stockStmt = $pdo->prepare('SELECT id FROM stocks WHERE id = ? AND institution_id = ? AND active = 1');
-        $stockStmt->execute([$stockId, $institutionId]);
-        if (!$stockStmt->fetch()) {
-            throw new RuntimeException('Stock not found for institution');
+        $env = getenv('APP_ENV') ?: 'production';
+
+        $pdo->beginTransaction();
+        try {
+            $stockStmt = $pdo->prepare('SELECT id FROM stocks WHERE id = ? AND institution_id = ? AND active = 1');
+            $stockStmt->execute([$stockId, $institutionId]);
+            if (!$stockStmt->fetch()) {
+                throw new RuntimeException('Stock not found for institution');
+            }
+
+            $pdo->prepare('INSERT INTO stock_prices (stock_id, price, created_at) VALUES (?, ?, UTC_TIMESTAMP())')
+                ->execute([$stockId, $price]);
+            $pdo->prepare('UPDATE stocks SET updated_at = UTC_TIMESTAMP() WHERE id = ? AND institution_id = ?')
+                ->execute([$stockId, $institutionId]);
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
 
-        $pdo->prepare('INSERT INTO stock_prices (stock_id, price, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)')->execute([$stockId, $price]);
-        $pdo->prepare('UPDATE stocks SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?')->execute([$stockId, $institutionId]);
+        if ($env !== 'production') {
+            error_log(sprintf('Stock price updated for stock_id=%d to %.2f', $stockId, $price));
+        }
     }
 
     public static function latestPrice(int $stockId, int $institutionId): ?array
