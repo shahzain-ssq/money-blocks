@@ -3,9 +3,19 @@ import { fetchJson, getErrorMessage } from './js/api.js';
 
 let chart;
 let candleSeries;
+let chartContainer;
+let resizeObserver;
+let pendingCandleData = null;
+let pendingFitContent = false;
 let currentStockId = null;
 let currentCandles = []; // Store aggregated candles
 let lastTickTime = 0;
+const isDevEnv = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+function logDebug(message, ...args) {
+    if (!isDevEnv) return;
+    console.debug(`[charts] ${message}`, ...args);
+}
 
 async function init() {
     try {
@@ -39,8 +49,8 @@ async function init() {
         });
     }
 
-        loadWatchlist();
         initChart();
+        loadWatchlist();
     } catch (e) {
         console.error('Chart initialization failed', e);
         if (redirectIfUnauthorized(e)) return;
@@ -104,12 +114,38 @@ async function loadWatchlist() {
 }
 
 function initChart() {
-    const chartContainer = document.getElementById('tv-chart');
+    chartContainer = document.getElementById('tv-chart');
     if (!chartContainer) return;
 
+    if (!resizeObserver) {
+        resizeObserver = new ResizeObserver(entries => {
+            if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
+            const newRect = entries[0].contentRect;
+            if (!chart) {
+                if (newRect.width > 0 && newRect.height > 0) {
+                    tryCreateChart();
+                }
+                return;
+            }
+            chart.applyOptions({ height: newRect.height, width: newRect.width });
+        });
+    }
+    resizeObserver.observe(chartContainer);
+    if (!tryCreateChart()) {
+        logDebug('Chart container size is zero, waiting for resize to initialize.');
+    }
+}
+
+function tryCreateChart() {
+    if (chart || !chartContainer) return true;
+    const width = chartContainer.clientWidth;
+    const height = chartContainer.clientHeight;
+    if (width === 0 || height === 0) return false;
+
+    logDebug('Creating chart instance.', { width, height });
     chart = LightweightCharts.createChart(chartContainer, {
-        width: chartContainer.clientWidth,
-        height: chartContainer.clientHeight,
+        width,
+        height,
         layout: {
             backgroundColor: '#1e293b',
             textColor: '#94a3b8',
@@ -124,13 +160,6 @@ function initChart() {
         },
     });
 
-    // Resize observer
-    new ResizeObserver(entries => {
-        if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
-        const newRect = entries[0].contentRect;
-        chart.applyOptions({ height: newRect.height, width: newRect.width });
-    }).observe(chartContainer);
-
     // Switch to Candlestick Series
     candleSeries = chart.addCandlestickSeries({
         upColor: '#26a69a',
@@ -139,6 +168,35 @@ function initChart() {
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
     });
+    logDebug('Candlestick series created.');
+    flushPendingCandleData();
+    return true;
+}
+
+function setCandlestickData(data, options = {}) {
+    if (!candleSeries) {
+        console.warn('[charts] Candlestick series not ready. Deferring setData.', options);
+        pendingCandleData = data;
+        pendingFitContent = Boolean(options.fitContent);
+        return false;
+    }
+    logDebug('Setting candlestick data.', { count: data.length, reason: options.reason });
+    candleSeries.setData(data);
+    if (options.fitContent && chart) {
+        chart.timeScale().fitContent();
+    }
+    return true;
+}
+
+function flushPendingCandleData() {
+    if (!candleSeries || !pendingCandleData) return;
+    logDebug('Applying deferred candlestick data.', { count: pendingCandleData.length });
+    candleSeries.setData(pendingCandleData);
+    if (pendingFitContent && chart) {
+        chart.timeScale().fitContent();
+    }
+    pendingCandleData = null;
+    pendingFitContent = false;
 }
 
 async function selectStock(stock) {
@@ -158,6 +216,7 @@ async function selectStock(stock) {
     try {
         // Request more data points to build candles
         const data = await fetchJson(`/api/stock_history.php?stock_id=${stock.id}&limit=1000`);
+        logDebug('History fetch complete.', { stockId: stock.id, count: data.prices?.length || 0 });
 
         if (loader) loader.textContent = '';
 
@@ -165,24 +224,26 @@ async function selectStock(stock) {
             // Transform data for lightweight charts
             // API returns { price: number, created_at: string } sorted DESC (newest first)
             // We need ASC (oldest first)
-            const sorted = data.prices.reverse().map(p => ({
-                time: parseDate(p.created_at),
-                value: parseFloat(p.price)
-            }));
+            const sorted = data.prices.reverse().map(p => {
+                const priceValue = Number.parseFloat(p.price);
+                return {
+                    time: parseDate(p.created_at),
+                    value: priceValue
+                };
+            }).filter(point => Number.isFinite(point.value));
 
             // Aggregate into candles (1 minute intervals)
             currentCandles = aggregateToCandles(sorted, 60);
 
             if (currentCandles.length > 0) {
-                candleSeries.setData(currentCandles);
-                chart.timeScale().fitContent();
+                setCandlestickData(currentCandles, { fitContent: true, reason: 'initial-load' });
                 // Update lastTickTime
                 lastTickTime = currentCandles[currentCandles.length - 1].time;
             } else {
-                candleSeries.setData([]);
+                setCandlestickData([], { reason: 'empty-aggregate' });
             }
         } else {
-             candleSeries.setData([]);
+             setCandlestickData([], { reason: 'no-history' });
              if (loader) loader.textContent = 'No data';
         }
     } catch (e) {
@@ -243,12 +304,19 @@ function aggregateToCandles(ticks, intervalSeconds) {
 }
 
 function updateChart(price, timestamp) {
-    if (!candleSeries) return;
+    if (!candleSeries) {
+        console.warn('[charts] Candlestick series not ready. Skipping update.');
+        return;
+    }
 
     // Use provided timestamp or now
     // If timestamp is not provided from WS, use Date.now()
     const now = timestamp || (Date.now() / 1000);
     const priceFloat = parseFloat(price);
+    if (!Number.isFinite(priceFloat)) {
+        console.warn('[charts] Invalid price update received.', price);
+        return;
+    }
 
     // 1-minute interval
     const intervalSeconds = 60;
