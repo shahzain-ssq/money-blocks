@@ -79,6 +79,7 @@ python3 websocket/server.py
 - **Frontend**: Edit files in `public/`.
 - **API**: Edit files in `api/` and classes in `src/`.
 - **Auth**: Google OAuth configured via `institutions` table.
+- **Charts**: `public/chart.html` loads lightweight-charts from a pinned CDN version (`lightweight-charts@5.0.1`) to avoid breaking API changes.
 
 ## DB Sanity Check
 
