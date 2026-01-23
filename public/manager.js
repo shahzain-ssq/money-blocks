@@ -86,9 +86,7 @@ function setFormBusy(form, isBusy) {
     form.setAttribute('aria-busy', isBusy ? 'true' : 'false');
     const elements = form.querySelectorAll('input, textarea, select, button');
     elements.forEach((el) => {
-        if (el.type === 'submit' || el.tagName !== 'BUTTON') {
-            el.disabled = isBusy;
-        }
+        el.disabled = isBusy;
     });
 }
 
@@ -158,7 +156,7 @@ function bindManagerActions() {
                 promoteUser(id);
             }
             if (button.dataset.action === 'reset-password') {
-                const name = decodeURIComponent(button.dataset.name || 'this user');
+                const name = button.dataset.name || 'this user';
                 resetPassword(id, name);
             }
         });
@@ -219,21 +217,52 @@ function renderParticipants() {
         return;
     }
     filtered.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'participant-item';
         const isManager = p.role === 'manager' || p.role === 'admin';
         const displayName = p.username || p.email || 'Participant';
-        div.innerHTML = `
-            <div>
-                <strong>${displayName}</strong>
-                ${isManager ? '<span class="badge badge-info">Manager</span>' : ''}<br>
-                <small>Cash: ${p.cash_balance || 0}</small>
-            </div>
-            <div style="display:flex; gap:0.5rem;">
-                 ${!isManager ? `<button class="btn btn-sm btn-outline" type="button" data-action="promote-user" data-id="${p.id}">Promote</button>` : ''}
-                 <button class="btn btn-sm btn-outline" type="button" data-action="reset-password" data-id="${p.id}" data-name="${encodeURIComponent(displayName)}">Pwd</button>
-            </div>
-        `;
+        const div = document.createElement('div');
+        div.className = 'participant-item';
+
+        const info = document.createElement('div');
+        const nameEl = document.createElement('strong');
+        nameEl.textContent = displayName;
+        info.appendChild(nameEl);
+        if (isManager) {
+            const badge = document.createElement('span');
+            badge.className = 'badge badge-info';
+            badge.textContent = 'Manager';
+            info.appendChild(document.createTextNode(' '));
+            info.appendChild(badge);
+        }
+        info.appendChild(document.createElement('br'));
+        const cash = document.createElement('small');
+        cash.textContent = `Cash: ${p.cash_balance || 0}`;
+        info.appendChild(cash);
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '0.5rem';
+
+        if (!isManager) {
+            const promoteBtn = document.createElement('button');
+            promoteBtn.className = 'btn btn-sm btn-outline';
+            promoteBtn.type = 'button';
+            promoteBtn.dataset.action = 'promote-user';
+            promoteBtn.dataset.id = p.id;
+            promoteBtn.textContent = 'Promote';
+            actions.appendChild(promoteBtn);
+        }
+
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'btn btn-sm btn-outline';
+        resetBtn.type = 'button';
+        resetBtn.dataset.action = 'reset-password';
+        resetBtn.dataset.id = p.id;
+        resetBtn.dataset.name = displayName;
+        resetBtn.textContent = 'Pwd';
+        actions.appendChild(resetBtn);
+
+        div.appendChild(info);
+        div.appendChild(actions);
         list.appendChild(div);
     });
 }
@@ -309,7 +338,6 @@ document.getElementById('addParticipantForm').addEventListener('submit', async (
         if (redirectIfUnauthorized(e)) return;
         const message = getErrorMessage(e, 'Failed to create participant.');
         setFormError('participantFormError', message);
-        alert(message);
     } finally {
         setFormBusy(e.target, false);
     }
@@ -391,6 +419,14 @@ async function openStockModal(id) {
             form.name.value = data.stock.name || '';
             form.initial_price.value = data.stock.initial_price ?? '';
             form.total_limit.value = data.stock.total_limit ?? '';
+            const perUserLimitInput = form.querySelector('[name="per_user_limit"]');
+            if (perUserLimitInput) {
+                perUserLimitInput.value = data.stock.per_user_limit ?? '';
+            }
+            const perUserShortLimitInput = form.querySelector('[name="per_user_short_limit"]');
+            if (perUserShortLimitInput) {
+                perUserShortLimitInput.value = data.stock.per_user_short_limit ?? '';
+            }
         },
     });
 }
@@ -403,6 +439,11 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
     const isEdit = !!payload.id;
     const method = isEdit ? 'PUT' : 'POST';
     const url = isEdit ? `/api/manager_stocks.php?id=${payload.id}` : '/api/manager_stocks.php';
+    ['total_limit', 'per_user_limit', 'per_user_short_limit'].forEach((key) => {
+        if (payload[key] === '') {
+            payload[key] = null;
+        }
+    });
 
     try {
         setFormError('stockFormError', '');
@@ -420,7 +461,6 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
         if (redirectIfUnauthorized(e)) return;
         const message = getErrorMessage(e, 'Failed to save stock.');
         setFormError('stockFormError', message);
-        alert(message);
     } finally {
         setFormBusy(e.target, false);
     }
@@ -564,7 +604,6 @@ document.getElementById('scenarioForm').addEventListener('submit', async (e) => 
         if (redirectIfUnauthorized(e)) return;
         const message = getErrorMessage(e, 'Failed to save scenario.');
         setFormError('scenarioFormError', message);
-        alert(message);
     } finally {
         setFormBusy(e.target, false);
     }
