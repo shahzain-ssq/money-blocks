@@ -241,11 +241,12 @@ async function selectStock(stock) {
             // We need ASC (oldest first)
             const sorted = data.prices.reverse().map(p => {
                 const priceValue = Number.parseFloat(p.price);
+                const parsedTime = parseDate(p.created_at);
                 return {
-                    time: parseDate(p.created_at),
+                    time: parsedTime,
                     value: priceValue
                 };
-            }).filter(point => Number.isFinite(point.value));
+            }).filter(point => Number.isFinite(point.value) && Number.isFinite(point.time));
 
             // Aggregate into candles (1 minute intervals)
             currentCandles = aggregateToCandles(sorted, 60);
@@ -326,7 +327,8 @@ function updateChart(price, timestamp) {
 
     // Use provided timestamp or now
     // If timestamp is not provided from WS, use Date.now()
-    const now = timestamp || (Date.now() / 1000);
+    const timestampSeconds = Number(timestamp);
+    const now = Number.isFinite(timestampSeconds) ? timestampSeconds : (Date.now() / 1000);
     const priceFloat = parseFloat(price);
     if (!Number.isFinite(priceFloat)) {
         console.warn('[charts] Invalid price update received.', price);
