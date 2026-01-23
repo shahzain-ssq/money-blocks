@@ -15,27 +15,51 @@ if ($user['role'] !== 'admin' && $user['role'] !== 'manager') {
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id) {
+        $scenario = ScenarioService::getById($id, (int)$user['institution_id']);
+        if (!$scenario) {
+            jsonError('not_found', 'Scenario not found.', 404);
+        }
+        jsonResponse(['scenario' => $scenario]);
+    }
     $scenarios = ScenarioService::getAll($user['institution_id']);
     jsonResponse(['scenarios' => $scenarios]);
 }
-elseif ($method === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if (!isset($input['title'])) {
+
+if ($method === 'POST' || $method === 'PUT') {
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $title = trim($input['title'] ?? '');
+    if ($title === '') {
         jsonError('title_required', 'Scenario title is required.', 400);
     }
 
-    // Validate starts_at if provided (UTC string)
-    $startsAt = !empty($input['starts_at']) ? $input['starts_at'] : null;
     $status = $input['status'] ?? 'draft';
-
-    if (isset($input['id'])) {
-        ScenarioService::update($input['id'], $user['institution_id'], $input['title'], $input['description'] ?? '', $status, $startsAt);
-        jsonResponse(['message' => 'Updated']);
-    } else {
-        ScenarioService::create($user['institution_id'], $input['title'], $input['description'] ?? '', $status, $startsAt);
-        jsonResponse(['message' => 'Created']);
+    $allowedStatuses = ['draft', 'published', 'archived'];
+    if (!in_array($status, $allowedStatuses, true)) {
+        jsonError('invalid_status', 'Scenario status is invalid.', 422);
     }
+
+    $startsAt = !empty($input['starts_at']) ? $input['starts_at'] : null;
+    if ($startsAt !== null && strtotime($startsAt) === false) {
+        jsonError('invalid_start_time', 'Scenario start time is invalid.', 422);
+    }
+
+    if ($method === 'PUT') {
+        $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
+        if (!$id) {
+            jsonError('id_required', 'Scenario ID is required.', 422);
+        }
+        $scenario = ScenarioService::getById($id, (int)$user['institution_id']);
+        if (!$scenario) {
+            jsonError('not_found', 'Scenario not found.', 404);
+        }
+        ScenarioService::update($id, $user['institution_id'], $title, $input['description'] ?? '', $status, $startsAt);
+        jsonResponse(['message' => 'Updated']);
+    }
+
+    ScenarioService::create($user['institution_id'], $title, $input['description'] ?? '', $status, $startsAt);
+    jsonResponse(['message' => 'Created']);
 }
-else {
-    jsonError('method_not_allowed', 'Method not allowed.', 405);
-}
+
+jsonError('method_not_allowed', 'Method not allowed.', 405);

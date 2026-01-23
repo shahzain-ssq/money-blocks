@@ -4,6 +4,7 @@ import { fetchJson, getErrorMessage } from './js/api.js';
 async function initManager() {
   try {
     clearManagerError();
+    bindModalControls();
     const config = await fetchJson('/api/config.php');
     const me = await fetchJson('/api/auth_me.php');
     if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) {
@@ -26,6 +27,7 @@ async function initManager() {
     loadStocks();
     loadConfig();
     loadScenarios();
+    bindManagerActions();
 
   } catch (err) {
     console.error('Failed to initialize manager view:', err);
@@ -54,6 +56,135 @@ function redirectIfUnauthorized(err) {
         return true;
     }
     return false;
+}
+
+function bindModalControls() {
+    document.addEventListener('click', (event) => {
+        const closeBtn = event.target.closest('[data-action="close-modal"]');
+        if (!closeBtn) return;
+        const modal = closeBtn.closest('.modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
+function setFormError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!message) {
+        el.textContent = '';
+        el.style.display = 'none';
+        return;
+    }
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function setFormBusy(form, isBusy) {
+    if (!form) return;
+    form.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    const elements = form.querySelectorAll('input, textarea, select, button');
+    elements.forEach((el) => {
+        el.disabled = isBusy;
+    });
+}
+
+async function openAdminEditModal({
+    id,
+    modalId,
+    formId,
+    errorId,
+    title,
+    loadUrl,
+    beforeOpen,
+    populateForm,
+}) {
+    setFormError(errorId, '');
+    const form = document.getElementById(formId);
+    if (!form) return;
+    form.reset();
+    if (typeof beforeOpen === 'function') {
+        beforeOpen(form, id);
+    }
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.querySelector('h3').textContent = title;
+        modal.style.display = 'block';
+    }
+
+    if (!id || !loadUrl) return;
+
+    try {
+        setFormBusy(form, true);
+        const data = await fetchJson(loadUrl);
+        if (typeof populateForm === 'function') {
+            populateForm(form, data);
+        }
+    } catch (e) {
+        console.error('Failed to load admin edit data', e);
+        if (redirectIfUnauthorized(e)) return;
+        setFormError(errorId, getErrorMessage(e, 'Failed to load data.'));
+    } finally {
+        setFormBusy(form, false);
+    }
+}
+
+function bindManagerActions() {
+    const participantAddBtn = document.getElementById('addParticipantBtn');
+    if (participantAddBtn) {
+        participantAddBtn.addEventListener('click', () => openParticipantModal());
+    }
+    const stockAddBtn = document.getElementById('addStockBtn');
+    if (stockAddBtn) {
+        stockAddBtn.addEventListener('click', () => openStockModal());
+    }
+    const scenarioAddBtn = document.getElementById('addScenarioBtn');
+    if (scenarioAddBtn) {
+        scenarioAddBtn.addEventListener('click', () => openScenarioModal());
+    }
+
+    const participantsList = document.getElementById('participantsList');
+    if (participantsList) {
+        participantsList.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            event.preventDefault();
+            const id = Number(button.dataset.id);
+            if (!id) return;
+            if (button.dataset.action === 'promote-user') {
+                promoteUser(id);
+            }
+            if (button.dataset.action === 'reset-password') {
+                const name = button.dataset.name || 'this user';
+                resetPassword(id, name);
+            }
+        });
+    }
+
+    const stocksList = document.getElementById('stocksList');
+    if (stocksList) {
+        stocksList.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-action="edit-stock"]');
+            if (!button) return;
+            event.preventDefault();
+            const id = Number(button.dataset.id);
+            if (!id) return;
+            openStockModal(id);
+        });
+    }
+
+    const scenariosList = document.getElementById('scenariosList');
+    if (scenariosList) {
+        scenariosList.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-action="edit-scenario"]');
+            if (!button) return;
+            event.preventDefault();
+            const id = Number(button.dataset.id);
+            if (!id) return;
+            openScenarioModal(id);
+        });
+    }
 }
 
 // Participants
@@ -86,20 +217,52 @@ function renderParticipants() {
         return;
     }
     filtered.forEach(p => {
+        const isManager = p.role === 'manager' || p.role === 'admin';
+        const displayName = p.username || p.email || 'Participant';
         const div = document.createElement('div');
         div.className = 'participant-item';
-        const isManager = p.role === 'manager' || p.role === 'admin';
-        div.innerHTML = `
-            <div>
-                <strong>${p.username || p.email}</strong>
-                ${isManager ? '<span class="badge badge-info">Manager</span>' : ''}<br>
-                <small>Cash: ${p.cash_balance || 0}</small>
-            </div>
-            <div style="display:flex; gap:0.5rem;">
-                 ${!isManager ? `<button class="btn btn-sm btn-outline" onclick="promoteUser(${p.id})">Promote</button>` : ''}
-                 <button class="btn btn-sm btn-outline" onclick="resetPassword(${p.id}, '${p.username || p.email}')">Pwd</button>
-            </div>
-        `;
+
+        const info = document.createElement('div');
+        const nameEl = document.createElement('strong');
+        nameEl.textContent = displayName;
+        info.appendChild(nameEl);
+        if (isManager) {
+            const badge = document.createElement('span');
+            badge.className = 'badge badge-info';
+            badge.textContent = 'Manager';
+            info.appendChild(document.createTextNode(' '));
+            info.appendChild(badge);
+        }
+        info.appendChild(document.createElement('br'));
+        const cash = document.createElement('small');
+        cash.textContent = `Cash: ${p.cash_balance || 0}`;
+        info.appendChild(cash);
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '0.5rem';
+
+        if (!isManager) {
+            const promoteBtn = document.createElement('button');
+            promoteBtn.className = 'btn btn-sm btn-outline';
+            promoteBtn.type = 'button';
+            promoteBtn.dataset.action = 'promote-user';
+            promoteBtn.dataset.id = p.id;
+            promoteBtn.textContent = 'Promote';
+            actions.appendChild(promoteBtn);
+        }
+
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'btn btn-sm btn-outline';
+        resetBtn.type = 'button';
+        resetBtn.dataset.action = 'reset-password';
+        resetBtn.dataset.id = p.id;
+        resetBtn.dataset.name = displayName;
+        resetBtn.textContent = 'Pwd';
+        actions.appendChild(resetBtn);
+
+        div.appendChild(info);
+        div.appendChild(actions);
         list.appendChild(div);
     });
 }
@@ -108,7 +271,7 @@ document.getElementById('participantSearch').addEventListener('input', () => {
     renderParticipants();
 });
 
-window.resetPassword = async function(id, name) {
+async function resetPassword(id, name) {
     const newPwd = prompt(`Enter new password for ${name}:`);
     if (!newPwd) return;
     try {
@@ -123,9 +286,9 @@ window.resetPassword = async function(id, name) {
         if (redirectIfUnauthorized(e)) return;
         alert(getErrorMessage(e, 'Failed to reset password.'));
     }
-};
+}
 
-window.promoteUser = async function(id) {
+async function promoteUser(id) {
     if(!confirm('Promote user to Manager?')) return;
     try {
         await fetchJson('/api/manager_participants.php', {
@@ -140,7 +303,19 @@ window.promoteUser = async function(id) {
         if (redirectIfUnauthorized(e)) return;
         alert(getErrorMessage(e, 'Failed to promote user.'));
     }
-};
+}
+
+function openParticipantModal() {
+    setFormError('participantFormError', '');
+    const form = document.getElementById('addParticipantForm');
+    if (form) {
+        form.reset();
+    }
+    const modal = document.getElementById('addParticipantModal');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
 
 document.getElementById('addParticipantForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -148,6 +323,8 @@ document.getElementById('addParticipantForm').addEventListener('submit', async (
     const payload = Object.fromEntries(formData.entries());
 
     try {
+        setFormError('participantFormError', '');
+        setFormBusy(e.target, true);
         const data = await fetchJson('/api/manager_participants.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -157,8 +334,12 @@ document.getElementById('addParticipantForm').addEventListener('submit', async (
         document.getElementById('addParticipantModal').style.display='none';
         loadParticipants();
     } catch (e) {
+        console.error('Failed to create participant', e);
         if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to create participant.'));
+        const message = getErrorMessage(e, 'Failed to create participant.');
+        setFormError('participantFormError', message);
+    } finally {
+        setFormBusy(e.target, false);
     }
 });
 
@@ -201,7 +382,7 @@ function renderStocks() {
                 <small>${s.current_price || s.initial_price}</small>
             </div>
              <div>
-                 <button class="btn btn-sm btn-outline" onclick="editStock(${s.id})">Edit</button>
+                 <button class="btn btn-sm btn-outline" type="button" data-action="edit-stock" data-id="${s.id}">Edit</button>
             </div>
         `;
         list.appendChild(div);
@@ -212,52 +393,43 @@ document.getElementById('stockSearch').addEventListener('input', () => {
     renderStocks();
 });
 
-window.editStock = function(id) {
-    const s = allStocks.find(x => x.id === id);
-    if (!s) return;
-
-    const form = document.getElementById('addStockForm');
-    form.ticker.value = s.ticker;
-    form.name.value = s.name;
-    form.initial_price.value = s.initial_price;
-    form.total_limit.value = s.total_limit || '';
-
-    // Check if we need to add hidden input for ID or handle it in submit
-    let idInput = form.querySelector('input[name="id"]');
-    if (!idInput) {
-        idInput = document.createElement('input');
-        idInput.type = 'hidden';
-        idInput.name = 'id';
-        form.appendChild(idInput);
-    }
-    idInput.value = s.id;
-
-    // Change Title
-    const modal = document.getElementById('addStockModal');
-    modal.querySelector('h3').textContent = 'Edit Stock';
-    modal.style.display = 'block';
-};
-
-// Reset form when opening via Add button (which needs to be wired if not already)
-// The HTML has onclick="document.getElementById('addStockModal').style.display='block'"
-// We should intercept this or clear form on submit/cancel.
-// Or better: add a window function for openAddStockModal
-window.openAddStockModal = function() {
-    const form = document.getElementById('addStockForm');
-    form.reset();
-    const idInput = form.querySelector('input[name="id"]');
-    if (idInput) idInput.value = '';
-
-    const modal = document.getElementById('addStockModal');
-    modal.querySelector('h3').textContent = 'Add Stock';
-    modal.style.display = 'block';
-};
-
-// Update HTML to use openAddStockModal instead of direct style manipulation if possible
-// But since we can't easily change HTML onclicks without editing HTML file, let's just leave it
-// and handle "Add" logic: if I click Add after Edit, the form might have values.
-// I should use mutation observer or just update the HTML file too.
-// Let's update HTML file to call openAddStockModal().
+async function openStockModal(id) {
+    await openAdminEditModal({
+        id,
+        modalId: 'addStockModal',
+        formId: 'addStockForm',
+        errorId: 'stockFormError',
+        title: id ? 'Edit Stock' : 'Add Stock',
+        loadUrl: id ? `/api/manager_stocks.php?id=${id}` : null,
+        beforeOpen: (form, stockId) => {
+            let idInput = form.querySelector('input[name="id"]');
+            if (!idInput) {
+                idInput = document.createElement('input');
+                idInput.type = 'hidden';
+                idInput.name = 'id';
+                form.appendChild(idInput);
+            }
+            idInput.value = stockId ? String(stockId) : '';
+        },
+        populateForm: (form, data) => {
+            if (!data.stock) {
+                throw new Error('Stock data missing from response.');
+            }
+            form.ticker.value = data.stock.ticker || '';
+            form.name.value = data.stock.name || '';
+            form.initial_price.value = data.stock.initial_price ?? '';
+            form.total_limit.value = data.stock.total_limit ?? '';
+            const perUserLimitInput = form.querySelector('[name="per_user_limit"]');
+            if (perUserLimitInput) {
+                perUserLimitInput.value = data.stock.per_user_limit ?? '';
+            }
+            const perUserShortLimitInput = form.querySelector('[name="per_user_short_limit"]');
+            if (perUserShortLimitInput) {
+                perUserShortLimitInput.value = data.stock.per_user_short_limit ?? '';
+            }
+        },
+    });
+}
 
 document.getElementById('addStockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -267,8 +439,15 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
     const isEdit = !!payload.id;
     const method = isEdit ? 'PUT' : 'POST';
     const url = isEdit ? `/api/manager_stocks.php?id=${payload.id}` : '/api/manager_stocks.php';
+    ['total_limit', 'per_user_limit', 'per_user_short_limit'].forEach((key) => {
+        if (payload[key] === '') {
+            payload[key] = null;
+        }
+    });
 
     try {
+        setFormError('stockFormError', '');
+        setFormBusy(e.target, true);
         await fetchJson(url, {
             method: method,
             headers: {'Content-Type': 'application/json'},
@@ -278,8 +457,12 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
         document.getElementById('addStockModal').style.display='none';
         loadStocks();
     } catch (e) {
+        console.error('Failed to save stock', e);
         if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to save stock.'));
+        const message = getErrorMessage(e, 'Failed to save stock.');
+        setFormError('stockFormError', message);
+    } finally {
+        setFormBusy(e.target, false);
     }
 });
 
@@ -347,7 +530,7 @@ function renderScenarios() {
                 <small>Starts: ${startsAt}</small>
             </div>
              <div>
-                 <button class="btn btn-sm btn-outline" onclick="editScenario(${s.id})">Edit</button>
+                 <button class="btn btn-sm btn-outline" type="button" data-action="edit-scenario" data-id="${s.id}">Edit</button>
             </div>
         `;
         list.appendChild(div);
@@ -360,31 +543,35 @@ function getStatusBadge(status) {
     return 'secondary';
 }
 
-window.openScenarioModal = function() {
-    document.getElementById('scenarioForm').reset();
-    document.getElementById('scenarioId').value = '';
-    document.getElementById('scenarioModalTitle').textContent = 'Add Scenario';
-    document.getElementById('scenarioModal').style.display='block';
-};
-
-window.editScenario = function(id) {
-    const s = allScenarios.find(x => x.id === id);
-    if (!s) return;
-    document.getElementById('scenarioId').value = s.id;
-    document.getElementById('scenarioTitle').value = s.title;
-    document.getElementById('scenarioDesc').value = s.description || '';
-    document.getElementById('scenarioStatus').value = s.status;
-    // Format starts_at for input
-    if (s.starts_at) {
-        const startsAt = new Date(`${s.starts_at}Z`);
-        const localIso = new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000).toISOString();
-        document.getElementById('scenarioStart').value = localIso.slice(0, 16);
-    } else {
-        document.getElementById('scenarioStart').value = '';
-    }
-    document.getElementById('scenarioModalTitle').textContent = 'Edit Scenario';
-    document.getElementById('scenarioModal').style.display='block';
-};
+async function openScenarioModal(id) {
+    await openAdminEditModal({
+        id,
+        modalId: 'scenarioModal',
+        formId: 'scenarioForm',
+        errorId: 'scenarioFormError',
+        title: id ? 'Edit Scenario' : 'Add Scenario',
+        loadUrl: id ? `/api/manager_scenarios.php?id=${id}` : null,
+        beforeOpen: () => {
+            document.getElementById('scenarioId').value = id ? String(id) : '';
+        },
+        populateForm: (_form, data) => {
+            const scenario = data.scenario;
+            if (!scenario) {
+                throw new Error('Scenario data missing from response.');
+            }
+            document.getElementById('scenarioTitle').value = scenario.title || '';
+            document.getElementById('scenarioDesc').value = scenario.description || '';
+            document.getElementById('scenarioStatus').value = scenario.status || 'draft';
+            if (scenario.starts_at) {
+                const startsAt = new Date(`${scenario.starts_at}Z`);
+                const localIso = new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000).toISOString();
+                document.getElementById('scenarioStart').value = localIso.slice(0, 16);
+            } else {
+                document.getElementById('scenarioStart').value = '';
+            }
+        },
+    });
+}
 
 document.getElementById('scenarioForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -397,9 +584,15 @@ document.getElementById('scenarioForm').addEventListener('submit', async (e) => 
         payload.starts_at = utcIso.slice(0, 19).replace('T', ' ');
     }
 
+    const isEdit = !!payload.id;
+    const method = isEdit ? 'PUT' : 'POST';
+    const url = isEdit ? `/api/manager_scenarios.php?id=${payload.id}` : '/api/manager_scenarios.php';
+
     try {
-        await fetchJson('/api/manager_scenarios.php', {
-            method: 'POST',
+        setFormError('scenarioFormError', '');
+        setFormBusy(e.target, true);
+        await fetchJson(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
@@ -407,8 +600,12 @@ document.getElementById('scenarioForm').addEventListener('submit', async (e) => 
         document.getElementById('scenarioModal').style.display='none';
         loadScenarios();
     } catch (e) {
+        console.error('Failed to save scenario', e);
         if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to save scenario.'));
+        const message = getErrorMessage(e, 'Failed to save scenario.');
+        setFormError('scenarioFormError', message);
+    } finally {
+        setFormBusy(e.target, false);
     }
 });
 

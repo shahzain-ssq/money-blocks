@@ -40,6 +40,15 @@ class StockService
         return $stocks;
     }
 
+    public static function getById(int $stockId, int $institutionId): ?array
+    {
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('SELECT id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active FROM stocks WHERE id = ? AND institution_id = ?');
+        $stmt->execute([$stockId, $institutionId]);
+        $stock = $stmt->fetch();
+        return $stock ?: null;
+    }
+
     public static function updatePrice(int $stockId, float $price, int $institutionId): void
     {
         $pdo = Database::getConnection();
