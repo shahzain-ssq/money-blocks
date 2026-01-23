@@ -1,7 +1,11 @@
 <?php
 require __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../src/Helpers.php';
+require_once __DIR__ . '/../src/Auth.php';
+require_once __DIR__ . '/../src/Database.php';
 require_once __DIR__ . '/../src/StockService.php';
+
+initApiRequest();
 
 $user = Auth::requireAuth();
 requireManager($user);
@@ -18,7 +22,7 @@ if ($method === 'POST') {
     $name = trim($input['name'] ?? '');
     $initialPrice = (float)($input['initial_price'] ?? 0);
     if ($ticker === '' || $name === '' || $initialPrice <= 0) {
-        jsonResponse(['error' => 'invalid_input'], 422);
+        jsonError('invalid_input', 'Ticker, name, and initial price are required.', 422);
     }
     $stmt = $pdo->prepare('INSERT INTO stocks (institution_id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
     $stmt->execute([
@@ -36,12 +40,12 @@ if ($method === 'POST') {
 if ($method === 'DELETE') {
     $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
     if (!$id) {
-        jsonResponse(['error' => 'id_required'], 422);
+        jsonError('id_required', 'Stock ID is required.', 422);
     }
     $stmt = $pdo->prepare('UPDATE stocks SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
     $stmt->execute([$id, $user['institution_id']]);
     if ($stmt->rowCount() === 0) {
-        jsonResponse(['error' => 'not_found'], 404);
+        jsonError('not_found', 'Stock not found.', 404);
     }
     jsonResponse(['ok' => true]);
 }
@@ -49,18 +53,18 @@ if ($method === 'DELETE') {
 if ($method === 'PUT') {
     $id = (int)($_GET['id'] ?? 0);
     if (!$id) {
-        jsonResponse(['error' => 'id_required'], 422);
+        jsonError('id_required', 'Stock ID is required.', 422);
     }
     $exists = $pdo->prepare('SELECT 1 FROM stocks WHERE id = ? AND institution_id = ?');
     $exists->execute([$id, $user['institution_id']]);
     if (!$exists->fetchColumn()) {
-        jsonResponse(['error' => 'not_found'], 404);
+        jsonError('not_found', 'Stock not found.', 404);
     }
     $ticker = trim($input['ticker'] ?? '');
     $name = trim($input['name'] ?? '');
     $initialPrice = (float)($input['initial_price'] ?? 0);
     if ($ticker === '' || $name === '' || $initialPrice <= 0) {
-        jsonResponse(['error' => 'invalid_input'], 422);
+        jsonError('invalid_input', 'Ticker, name, and initial price are required.', 422);
     }
     $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
     $update->execute([
@@ -77,4 +81,4 @@ if ($method === 'PUT') {
     jsonResponse(['ok' => true]);
 }
 
-jsonResponse(['error' => 'unsupported_method'], 405);
+jsonError('unsupported_method', 'Method not allowed.', 405);

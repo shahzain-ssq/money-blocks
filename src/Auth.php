@@ -60,8 +60,12 @@ class Auth
     {
         $user = self::currentUser();
         if (!$user) {
+            if (function_exists('jsonError')) {
+                jsonError('unauthorized', 'Authentication required.', 401);
+            }
             http_response_code(401);
-            echo json_encode(['error' => 'unauthorized']);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => ['code' => 'unauthorized', 'message' => 'Authentication required.']]);
             exit;
         }
         return $user;

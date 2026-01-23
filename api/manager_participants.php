@@ -4,6 +4,8 @@ require_once __DIR__ . '/../src/Helpers.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Database.php';
 
+initApiRequest();
+
 $user = Auth::requireAuth();
 requireManager($user);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -29,17 +31,17 @@ if ($method === 'PUT') {
     $id = (int)($input['id'] ?? 0);
     $role = $input['role'] ?? '';
     if ($id <= 0 || !in_array($role, ['student', 'manager'])) {
-        jsonResponse(['error' => 'invalid_input'], 422);
+        jsonError('invalid_input', 'Valid user ID and role are required.', 422);
     }
     // Prevent demoting self or last admin logic if needed (but currently simple)
     if ($id === (int)$user['id']) {
-        jsonResponse(['error' => 'cannot_modify_self'], 403);
+        jsonError('cannot_modify_self', 'You cannot modify your own role.', 403);
     }
 
     $check = $pdo->prepare('SELECT id FROM users WHERE id = ? AND institution_id = ?');
     $check->execute([$id, $user['institution_id']]);
     if (!$check->fetch()) {
-        jsonResponse(['error' => 'user_not_found'], 404);
+        jsonError('user_not_found', 'User not found.', 404);
     }
 
     $update = $pdo->prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
@@ -51,10 +53,10 @@ if ($method === 'POST') {
     $username = trim($input['username'] ?? '');
     $email = trim($input['email'] ?? '');
     if ($username === '' && $email === '') {
-        jsonResponse(['error' => 'username_or_email_required'], 422);
+        jsonError('username_or_email_required', 'Provide a username or email.', 422);
     }
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        jsonResponse(['error' => 'invalid_email'], 422);
+        jsonError('invalid_email', 'Email address is invalid.', 422);
     }
 
     if ($email !== '') {
@@ -65,7 +67,7 @@ if ($method === 'POST') {
         $check->execute([$user['institution_id'], $username]);
     }
     if ($check->fetch()) {
-        jsonResponse(['error' => 'user_exists'], 409);
+        jsonError('user_exists', 'A user with that email or username already exists.', 409);
     }
     $tempPassword = bin2hex(random_bytes(4));
     $hash = password_hash($tempPassword, PASSWORD_DEFAULT);
@@ -78,28 +80,34 @@ if ($method === 'POST') {
 if ($method === 'DELETE') {
     $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
     if ($id <= 0) {
-        jsonResponse(['error' => 'id_required'], 422);
+        jsonError('id_required', 'User ID is required.', 422);
     }
     if ($id === (int)$user['id']) {
-        jsonResponse(['error' => 'cannot_delete_self'], 403);
+        jsonError('cannot_delete_self', 'You cannot delete your own account.', 403);
     }
-
-    $pdo->beginTransaction();
-    $portfolioStmt = $pdo->prepare('SELECT id FROM portfolios WHERE user_id = ?');
-    $portfolioStmt->execute([$id]);
-    if ($portfolioId = $portfolioStmt->fetchColumn()) {
-        $pdo->prepare('DELETE FROM positions WHERE portfolio_id = ?')->execute([$portfolioId]);
-        $pdo->prepare('DELETE FROM short_positions WHERE portfolio_id = ?')->execute([$portfolioId]);
-        $pdo->prepare('DELETE FROM portfolios WHERE id = ?')->execute([$portfolioId]);
+    try {
+        $pdo->beginTransaction();
+        $portfolioStmt = $pdo->prepare('SELECT id FROM portfolios WHERE user_id = ?');
+        $portfolioStmt->execute([$id]);
+        if ($portfolioId = $portfolioStmt->fetchColumn()) {
+            $pdo->prepare('DELETE FROM positions WHERE portfolio_id = ?')->execute([$portfolioId]);
+            $pdo->prepare('DELETE FROM short_positions WHERE portfolio_id = ?')->execute([$portfolioId]);
+            $pdo->prepare('DELETE FROM portfolios WHERE id = ?')->execute([$portfolioId]);
+        }
+        $delete = $pdo->prepare('DELETE FROM users WHERE id = ? AND institution_id = ?');
+        $delete->execute([$id, $user['institution_id']]);
+        if ($delete->rowCount() === 0) {
+            $pdo->rollBack();
+            jsonError('not_found', 'User not found.', 404);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
-    $delete = $pdo->prepare('DELETE FROM users WHERE id = ? AND institution_id = ?');
-    $delete->execute([$id, $user['institution_id']]);
-    if ($delete->rowCount() === 0) {
-        $pdo->rollBack();
-        jsonResponse(['error' => 'not_found'], 404);
-    }
-    $pdo->commit();
     jsonResponse(['ok' => true]);
 }
 
-jsonResponse(['error' => 'unsupported_method'], 405);
+jsonError('unsupported_method', 'Method not allowed.', 405);

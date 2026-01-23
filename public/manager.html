@@ -59,6 +59,8 @@
          </div>
       </div>
 
+      <div id="managerError" class="alert alert-error" style="display:none;"></div>
+
       <div class="content admin-grid">
           <!-- Participants -->
           <div class="admin-card">
@@ -140,9 +142,9 @@
                      </select>
                  </div>
                  <div class="form-group">
-                     <label>Scheduled Start (UTC)</label>
+                     <label>Scheduled Start (local time)</label>
                      <input class="input" type="datetime-local" name="starts_at" id="scenarioStart">
-                     <small class="muted">Leave blank for immediate if published.</small>
+                     <small class="muted">Leave blank for immediate if published. Saved in UTC on the server.</small>
                  </div>
                  <button class="btn btn-primary full-width">Save</button>
              </form>

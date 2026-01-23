@@ -1,9 +1,10 @@
 <?php
 return [
     'db_host' => getenv('DB_HOST') ?: '127.0.0.1',
+    'db_port' => getenv('DB_PORT') ?: '3306',
     'db_name' => getenv('DB_NAME') ?: 'finportal',
     'db_user' => getenv('DB_USER') ?: 'root',
-    'db_pass' => getenv('DB_PASS') ?: '',
+    'db_pass' => getenv('DB_PASSWORD') ?: (getenv('DB_PASS') ?: ''),
     'session_name' => getenv('SESSION_NAME') ?: 'finportal_session',
     'session_domain' => trim(getenv('SESSION_DOMAIN') ?: ''),
     'ws_public_url' => getenv('WS_PUBLIC_URL') ?: '',

@@ -1,7 +1,8 @@
+import { fetchJson } from './api.js';
+
 export async function updateNotifications() {
     try {
-        const res = await fetch('/api/scenarios.php?action=count');
-        const data = await res.json();
+        const data = await fetchJson('/api/scenarios.php?action=count');
         const badge = document.getElementById('scenarios-badge');
         if (badge) {
             if (data.count > 0) {

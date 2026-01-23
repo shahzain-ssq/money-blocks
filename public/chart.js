@@ -1,4 +1,5 @@
 import { WebSocketManager } from './js/ws-manager.js';
+import { fetchJson, getErrorMessage } from './js/api.js';
 
 let chart;
 let candleSeries;
@@ -7,8 +8,10 @@ let currentCandles = []; // Store aggregated candles
 let lastTickTime = 0;
 
 async function init() {
-    const config = await fetch('/api/config.php').then(r => r.json());
-    const me = await fetch('/api/auth_me.php').then(r => r.json());
+    try {
+        clearChartError();
+        const config = await fetchJson('/api/config.php');
+        const me = await fetchJson('/api/auth_me.php');
 
     const chartHeader = document.querySelector('.chart-header');
     const loadingIndicator = document.createElement('span');
@@ -36,14 +39,41 @@ async function init() {
         });
     }
 
-    loadWatchlist();
-    initChart();
+        loadWatchlist();
+        initChart();
+    } catch (e) {
+        console.error('Chart initialization failed', e);
+        if (redirectIfUnauthorized(e)) return;
+        setChartError(getErrorMessage(e, 'Failed to initialize charts.'));
+    }
+}
+
+function setChartError(message) {
+    const el = document.getElementById('chartError');
+    if (!el) return;
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function clearChartError() {
+    const el = document.getElementById('chartError');
+    if (!el) return;
+    el.textContent = '';
+    el.style.display = 'none';
+}
+
+function redirectIfUnauthorized(err) {
+    if (err?.status === 401 || err?.code === 'unauthorized') {
+        window.location = '/';
+        return true;
+    }
+    return false;
 }
 
 async function loadWatchlist() {
     try {
-        const res = await fetch('/api/stocks.php');
-        const data = await res.json();
+        clearChartError();
+        const data = await fetchJson('/api/stocks.php');
         const list = document.getElementById('watchlist');
         list.innerHTML = '';
 
@@ -68,6 +98,8 @@ async function loadWatchlist() {
     } catch (e) {
         console.error("Failed to load watchlist", e);
         document.getElementById('watchlist').innerHTML = '<div style="padding:1rem;">Failed to load stocks.</div>';
+        if (redirectIfUnauthorized(e)) return;
+        setChartError(getErrorMessage(e, 'Failed to load stocks.'));
     }
 }
 
@@ -125,8 +157,7 @@ async function selectStock(stock) {
     // Fetch History
     try {
         // Request more data points to build candles
-        const res = await fetch(`/api/stock_history.php?stock_id=${stock.id}&limit=1000`);
-        const data = await res.json();
+        const data = await fetchJson(`/api/stock_history.php?stock_id=${stock.id}&limit=1000`);
 
         if (loader) loader.textContent = '';
 
@@ -157,14 +188,15 @@ async function selectStock(stock) {
     } catch (e) {
         console.error("Failed to load history", e);
         if (loader) loader.textContent = 'Error loading data';
+        if (redirectIfUnauthorized(e)) return;
+        setChartError(getErrorMessage(e, 'Failed to load chart history.'));
     }
 }
 
 function parseDate(dateStr) {
-    // Handle MySQL/SQLite format "YYYY-MM-DD HH:MM:SS" -> ISO "YYYY-MM-DDTHH:MM:SS"
-    // Also handle possible already ISO
+    // Handle MySQL DATETIME format "YYYY-MM-DD HH:MM:SS" (stored in UTC).
     if (typeof dateStr === 'string' && dateStr.indexOf('T') === -1) {
-        return new Date(dateStr.replace(' ', 'T')).getTime() / 1000;
+        return new Date(dateStr.replace(' ', 'T') + 'Z').getTime() / 1000;
     }
     return new Date(dateStr).getTime() / 1000;
 }

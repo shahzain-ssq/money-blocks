@@ -12,11 +12,14 @@ class PortfolioService
 
     public static function getUserPortfolio(int $userId, int $institutionId): array
     {
+        $warnings = [];
         // Auto-settle any expired shorts so portfolio state stays fresh without a cron job.
         try {
             TradeService::closeExpiredShorts($institutionId);
         } catch (Throwable $e) {
-            error_log(sprintf('Failed to auto-close expired shorts for institution %d: %s', $institutionId, $e->getMessage()));
+            $message = sprintf('Failed to auto-close expired shorts for institution %d: %s', $institutionId, $e->getMessage());
+            error_log($message);
+            $warnings[] = 'We ran into an issue updating expired shorts. Data may be slightly delayed.';
         }
 
         $pdo = Database::getConnection();
@@ -66,6 +69,7 @@ class PortfolioService
                 'unrealized' => $unrealized,
                 'realized' => 0,
             ],
+            'warnings' => $warnings,
         ];
     }
 }

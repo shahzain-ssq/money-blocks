@@ -1,9 +1,18 @@
 let institutions = [];
 
 async function loadInstitutions() {
-  const res = await fetch('/api/institutions.php');
-  const data = await res.json();
-  institutions = data.institutions || [];
+  try {
+    const res = await fetch('/api/institutions.php');
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error?.message || 'Failed to load institutions.');
+    }
+    institutions = data.institutions || [];
+  } catch (e) {
+    console.error('Failed to load institutions', e);
+    document.getElementById('status').textContent = 'Failed to load institutions.';
+    return;
+  }
 
   // Populate Login Dropdown
   const select = document.getElementById('loginInstitution');
@@ -51,12 +60,19 @@ function renderInstitutionList(list) {
       // SSO Login logic
       // Redirect user to the institution's login page
       // If we had a stored URL, we'd use it. For now, we simulate Google Auth flow as per original code
-      const res = await fetch(`/api/auth_google_url.php?institution_id=${i.id}`);
-      const data = await res.json();
-      if (data.url) {
-        window.location = data.url;
-      } else {
-        alert('SSO not configured for this institution.');
+      try {
+        const res = await fetch(`/api/auth_google_url.php?institution_id=${i.id}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error?.message || 'SSO not configured for this institution.');
+        }
+        if (data.url) {
+          window.location = data.url;
+        } else {
+          alert('SSO not configured for this institution.');
+        }
+      } catch (e) {
+        alert(e.message || 'SSO not configured for this institution.');
       }
     };
 
@@ -108,8 +124,12 @@ async function handleLogin(e) {
   try {
     const res = await fetch('/api/auth_login.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
-    document.getElementById('status').textContent = data.error ? data.error : 'Logged in';
-    if (!data.error) window.location = '/dashboard';
+    if (!res.ok) {
+      document.getElementById('status').textContent = data?.error?.message || data?.error || 'Login failed.';
+      return;
+    }
+    document.getElementById('status').textContent = 'Logged in';
+    window.location = '/dashboard';
   } catch (err) {
     console.error('Login error:', err);
     document.getElementById('status').textContent = 'Login failed. Please try again.';
