@@ -56,7 +56,7 @@ class StockService
 
         $pdo->beginTransaction();
         try {
-            $stockStmt = $pdo->prepare('SELECT id FROM stocks WHERE id = ? AND institution_id = ? AND active = 1');
+            $stockStmt = $pdo->prepare('SELECT id FROM stocks WHERE id = ? AND institution_id = ? AND active = 1 FOR UPDATE');
             $stockStmt->execute([$stockId, $institutionId]);
             if (!$stockStmt->fetch()) {
                 throw new RuntimeException('Stock not found for institution');
