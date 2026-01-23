@@ -410,6 +410,24 @@ async function openStockModal(id) {
                 form.appendChild(idInput);
             }
             idInput.value = stockId ? String(stockId) : '';
+            const initialPriceGroup = form.querySelector('[data-field="initial-price"]');
+            const currentPriceGroup = form.querySelector('[data-field="current-price"]');
+            const initialPriceInput = form.querySelector('input[name="initial_price"]');
+            const priceInput = form.querySelector('input[name="price"]');
+            const isEdit = !!stockId;
+            if (initialPriceGroup) {
+                initialPriceGroup.style.display = isEdit ? 'none' : '';
+            }
+            if (currentPriceGroup) {
+                currentPriceGroup.style.display = isEdit ? '' : 'none';
+            }
+            if (initialPriceInput) {
+                initialPriceInput.disabled = isEdit;
+                initialPriceInput.required = !isEdit;
+            }
+            if (priceInput && !isEdit) {
+                priceInput.value = '';
+            }
         },
         populateForm: (form, data) => {
             if (!data.stock) {
@@ -418,6 +436,9 @@ async function openStockModal(id) {
             form.ticker.value = data.stock.ticker || '';
             form.name.value = data.stock.name || '';
             form.initial_price.value = data.stock.initial_price ?? '';
+            if (form.price) {
+                form.price.value = data.stock.current_price ?? data.stock.initial_price ?? '';
+            }
             form.total_limit.value = data.stock.total_limit ?? '';
             const perUserLimitInput = form.querySelector('[name="per_user_limit"]');
             if (perUserLimitInput) {
@@ -444,6 +465,12 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
             payload[key] = null;
         }
     });
+    if (isEdit) {
+        delete payload.initial_price;
+        if (payload.price === '' || payload.price == null) {
+            delete payload.price;
+        }
+    }
 
     try {
         setFormError('stockFormError', '');

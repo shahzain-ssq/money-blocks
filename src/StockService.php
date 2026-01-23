@@ -43,7 +43,8 @@ class StockService
     public static function getById(int $stockId, int $institutionId): ?array
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('SELECT id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active FROM stocks WHERE id = ? AND institution_id = ?');
+        $currentPrice = self::latestPriceFragment();
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, s.initial_price, s.total_limit, s.per_user_limit, s.per_user_short_limit, s.active, {$currentPrice} AS current_price FROM stocks s WHERE s.id = ? AND s.institution_id = ?");
         $stmt->execute([$stockId, $institutionId]);
         $stock = $stmt->fetch();
         return $stock ?: null;
