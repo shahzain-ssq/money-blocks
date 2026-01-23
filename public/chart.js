@@ -161,8 +161,8 @@ function tryCreateChart() {
         },
     });
 
-    // Switch to Candlestick Series
-    candleSeries = chart.addCandlestickSeries({
+    // Switch to Candlestick Series (v5+ API)
+    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
         upColor: '#26a69a',
         downColor: '#ef5350',
         borderVisible: false,
