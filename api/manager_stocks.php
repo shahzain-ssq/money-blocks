@@ -32,7 +32,7 @@ if ($method === 'POST') {
     if ($ticker === '' || $name === '' || $initialPrice <= 0) {
         jsonError('invalid_input', 'Ticker, name, and initial price are required.', 422);
     }
-    $stmt = $pdo->prepare('INSERT INTO stocks (institution_id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
+    $stmt = $pdo->prepare('INSERT INTO stocks (institution_id, ticker, name, initial_price, total_limit, per_user_limit, per_user_short_limit, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP())');
     $stmt->execute([
         $user['institution_id'],
         $ticker,
@@ -50,7 +50,7 @@ if ($method === 'DELETE') {
     if (!$id) {
         jsonError('id_required', 'Stock ID is required.', 422);
     }
-    $stmt = $pdo->prepare('UPDATE stocks SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
+    $stmt = $pdo->prepare('UPDATE stocks SET active = 0, updated_at = UTC_TIMESTAMP() WHERE id = ? AND institution_id = ?');
     $stmt->execute([$id, $user['institution_id']]);
     if ($stmt->rowCount() === 0) {
         jsonError('not_found', 'Stock not found.', 404);
@@ -83,6 +83,13 @@ if ($method === 'PUT') {
         jsonError('invalid_input', 'No updates provided.', 422);
     }
 
+    $incomingActive = array_key_exists('active', $input) ? (int)$input['active'] : (int)$stock['active'];
+    if ($hasPrice && (int)$stock['active'] !== 1 && $incomingActive !== 1) {
+        jsonError('not_found', 'Stock not found.', 404);
+    }
+
+    $requiresActivation = $hasPrice && (int)$stock['active'] !== 1 && $incomingActive === 1;
+
     if ($hasMetadata) {
         $ticker = array_key_exists('ticker', $input) ? trim($input['ticker'] ?? '') : $stock['ticker'];
         $name = array_key_exists('name', $input) ? trim($input['name'] ?? '') : $stock['name'];
@@ -101,10 +108,9 @@ if ($method === 'PUT') {
         $totalLimit = array_key_exists('total_limit', $input) ? $input['total_limit'] : $stock['total_limit'];
         $perUserLimit = array_key_exists('per_user_limit', $input) ? $input['per_user_limit'] : $stock['per_user_limit'];
         $perUserShortLimit = array_key_exists('per_user_short_limit', $input) ? $input['per_user_short_limit'] : $stock['per_user_short_limit'];
-        $active = array_key_exists('active', $input) ? (int)$input['active'] : (int)$stock['active'];
+        $active = $incomingActive;
 
-        $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND institution_id = ?');
-        $update->execute([
+        $updatePayload = [
             $ticker,
             $name,
             $initialPrice,
@@ -114,7 +120,12 @@ if ($method === 'PUT') {
             $active,
             $id,
             $user['institution_id'],
-        ]);
+        ];
+
+        if ($requiresActivation) {
+            $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND institution_id = ?');
+            $update->execute($updatePayload);
+        }
     }
 
     if ($hasPrice) {
@@ -128,6 +139,11 @@ if ($method === 'PUT') {
         } catch (RuntimeException $e) {
             jsonError('not_found', 'Stock not found.', 404);
         }
+    }
+
+    if ($hasMetadata && !$requiresActivation) {
+        $update = $pdo->prepare('UPDATE stocks SET ticker = ?, name = ?, initial_price = ?, total_limit = ?, per_user_limit = ?, per_user_short_limit = ?, active = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND institution_id = ?');
+        $update->execute($updatePayload);
     }
 
     jsonResponse(['ok' => true]);

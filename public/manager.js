@@ -428,6 +428,9 @@ async function openStockModal(id) {
             if (priceInput && !isEdit) {
                 priceInput.value = '';
             }
+            if (!isEdit) {
+                delete form.dataset.currentPrice;
+            }
         },
         populateForm: (form, data) => {
             if (!data.stock) {
@@ -437,7 +440,9 @@ async function openStockModal(id) {
             form.name.value = data.stock.name || '';
             form.initial_price.value = data.stock.initial_price ?? '';
             if (form.price) {
-                form.price.value = data.stock.current_price ?? data.stock.initial_price ?? '';
+                const currentPrice = data.stock.current_price ?? data.stock.initial_price ?? '';
+                form.price.value = currentPrice;
+                form.dataset.currentPrice = currentPrice;
             }
             form.total_limit.value = data.stock.total_limit ?? '';
             const perUserLimitInput = form.querySelector('[name="per_user_limit"]');
@@ -467,7 +472,9 @@ document.getElementById('addStockForm').addEventListener('submit', async (e) => 
     });
     if (isEdit) {
         delete payload.initial_price;
-        if (payload.price === '' || payload.price == null) {
+        const originalPrice = Number(e.target.dataset.currentPrice);
+        const submittedPrice = payload.price === '' ? NaN : Number(payload.price);
+        if (!Number.isFinite(submittedPrice) || (Number.isFinite(originalPrice) && submittedPrice === originalPrice)) {
             delete payload.price;
         }
     }
