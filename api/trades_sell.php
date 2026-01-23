@@ -5,15 +5,20 @@ require_once __DIR__ . '/../src/TradeService.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Database.php';
 
+initApiRequest();
+
 $user = Auth::requireAuth();
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $stockId = (int)($input['stock_id'] ?? 0);
 $qty = (int)($input['quantity'] ?? 0);
 if ($stockId <= 0 || $qty <= 0) {
-    jsonResponse(['error' => 'invalid_input'], 422);
+    jsonError('invalid_input', 'Stock ID and quantity are required.', 422);
 }
 $result = TradeService::sell((int)$user['id'], (int)$user['institution_id'], $stockId, $qty);
 if (isset($result['error'])) {
-    jsonResponse($result, 400);
+    $message = $result['error'] === 'insufficient_shares'
+        ? 'Insufficient shares to sell.'
+        : 'Unable to complete the trade.';
+    jsonError($result['error'], $message, 400);
 }
 jsonResponse($result);

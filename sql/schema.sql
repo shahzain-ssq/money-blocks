@@ -51,6 +51,7 @@ CREATE TABLE stock_prices (
     stock_id INT NOT NULL,
     price DECIMAL(12,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_stock_prices_stock_created (stock_id, created_at),
     FOREIGN KEY (stock_id) REFERENCES stocks(id)
 ) ENGINE=InnoDB;
 
@@ -89,6 +90,8 @@ CREATE TABLE short_positions (
     closed TINYINT(1) DEFAULT 0,
     close_price DECIMAL(12,2) NULL,
     close_at DATETIME NULL,
+    INDEX idx_short_positions_portfolio_stock_closed (portfolio_id, stock_id, closed),
+    INDEX idx_short_positions_closed_expires (closed, expires_at),
     FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
     FOREIGN KEY (stock_id) REFERENCES stocks(id)
 ) ENGINE=InnoDB;
@@ -101,6 +104,7 @@ CREATE TABLE trades (
     quantity INT NOT NULL,
     price DECIMAL(12,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_trades_portfolio_created (portfolio_id, created_at),
     FOREIGN KEY (portfolio_id) REFERENCES portfolios(id),
     FOREIGN KEY (stock_id) REFERENCES stocks(id)
 ) ENGINE=InnoDB;
@@ -115,6 +119,7 @@ CREATE TABLE crisis_scenarios (
     ends_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_crisis_institution_status_starts (institution_id, status, starts_at),
     FOREIGN KEY (institution_id) REFERENCES institutions(id)
 ) ENGINE=InnoDB;
 

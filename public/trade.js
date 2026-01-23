@@ -1,4 +1,5 @@
 import { WebSocketManager } from './js/ws-manager.js';
+import { fetchJson, getErrorMessage } from './js/api.js';
 
 let currentMode = 'spot'; // 'spot' or 'short'
 let currentAction = 'buy'; // 'buy', 'sell' (for spot), 'open', 'close' (for short)
@@ -9,35 +10,63 @@ let positions = [];
 let shorts = [];
 
 async function init() {
-    // Load config and auth
-    const config = await fetch('/api/config.php').then(r => r.json());
-    const me = await fetch('/api/auth_me.php').then(r => r.json());
+    try {
+        clearTradeError();
+        // Load config and auth
+        const config = await fetchJson('/api/config.php');
+        const me = await fetchJson('/api/auth_me.php');
 
-    // WS
-    if (config.wsPublicUrl && me.user) {
-         WebSocketManager.getInstance(me.user.institution_id, config.wsPublicUrl).onStatusChange(status => {
-             const el = document.getElementById('ws-status');
-             if(el) {
-                 el.textContent = status === 'connected' ? '● Live' : '○ Offline';
-                 el.className = status === 'connected' ? 'status-live' : 'status-offline';
-             }
-         });
+        // WS
+        if (config.wsPublicUrl && me.user) {
+            WebSocketManager.getInstance(me.user.institution_id, config.wsPublicUrl).onStatusChange(status => {
+                const el = document.getElementById('ws-status');
+                if (el) {
+                    el.textContent = status === 'connected' ? '● Live' : '○ Offline';
+                    el.className = status === 'connected' ? 'status-live' : 'status-offline';
+                }
+            });
+        }
+
+        // Load Data
+        await loadData();
+        setupEventListeners();
+        updateUI();
+    } catch (e) {
+        console.error('Trade initialization failed', e);
+        if (redirectIfUnauthorized(e)) return;
+        setTradeError(getErrorMessage(e, 'Failed to initialize trade screen.'));
     }
+}
 
-    // Load Data
-    await loadData();
-    setupEventListeners();
-    updateUI();
+function setTradeError(message) {
+    const el = document.getElementById('tradeError');
+    if (!el) return;
+    el.textContent = message;
+    el.style.display = 'block';
+}
+
+function clearTradeError() {
+    const el = document.getElementById('tradeError');
+    if (!el) return;
+    el.textContent = '';
+    el.style.display = 'none';
+}
+
+function redirectIfUnauthorized(err) {
+    if (err?.status === 401 || err?.code === 'unauthorized') {
+        window.location = '/';
+        return true;
+    }
+    return false;
 }
 
 async function loadData() {
     try {
-        const [stocksRes, portfolioRes] = await Promise.all([
-            fetch('/api/stocks.php'),
-            fetch('/api/portfolio.php')
+        clearTradeError();
+        const [stocksData, portfolioData] = await Promise.all([
+            fetchJson('/api/stocks.php'),
+            fetchJson('/api/portfolio.php')
         ]);
-        const stocksData = await stocksRes.json();
-        const portfolioData = await portfolioRes.json();
 
         stocks = stocksData.stocks || [];
         portfolio = portfolioData.portfolio;
@@ -99,7 +128,8 @@ async function loadData() {
 
     } catch (e) {
         console.error("Failed to load data", e);
-        alert("Failed to load trading data. Please refresh.");
+        if (redirectIfUnauthorized(e)) return;
+        setTradeError(getErrorMessage(e, 'Failed to load trading data. Please refresh.'));
     }
 }
 
@@ -176,8 +206,7 @@ let durationsLoaded = false;
 async function loadDurations() {
     if (durationsLoaded) return;
     try {
-        const res = await fetch('/api/config_options.php');
-        const data = await res.json();
+        const data = await fetchJson('/api/config_options.php');
         const select = document.getElementById('durationSelect');
         select.innerHTML = '';
         if (data.durations && data.durations.length > 0) {
@@ -196,6 +225,8 @@ async function loadDurations() {
         updatePreview();
     } catch (e) {
         console.error('Failed to load durations', e);
+        if (redirectIfUnauthorized(e)) return;
+        setTradeError(getErrorMessage(e, 'Failed to load short durations.'));
     }
 }
 
@@ -366,14 +397,13 @@ async function handleTrade(e) {
     submitBtn.textContent = 'Processing...';
 
     try {
-        const res = await fetch(endpoint, {
+        const data = await fetchJson(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        const data = await res.json();
 
-        if (res.ok && !data.error) {
+        if (!data.error) {
             // alert('Trade Successful');
             // Show inline success message or toast
             const msg = document.getElementById('validationMsg');
@@ -385,15 +415,12 @@ async function handleTrade(e) {
             // Reset quantity?
             document.getElementById('quantityInput').value = 1;
             updatePreview();
-        } else {
-            const msg = document.getElementById('validationMsg');
-            msg.textContent = `Trade Failed: ${data.error || 'Unknown Error'}`;
-            msg.style.color = 'var(--danger-color)';
         }
     } catch (err) {
         console.error(err);
+        if (redirectIfUnauthorized(err)) return;
         const msg = document.getElementById('validationMsg');
-        msg.textContent = 'Trade Failed: Network or Server Error';
+        msg.textContent = `Trade Failed: ${getErrorMessage(err, 'Network or Server Error')}`;
         msg.style.color = 'var(--danger-color)';
     } finally {
         submitBtn.disabled = false;

@@ -5,6 +5,8 @@ require_once __DIR__ . '/../src/InstitutionService.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/RateLimiter.php';
 
+initApiRequest();
+
 const LOGIN_RATE_LIMIT_WINDOW = 300; // 5 minutes
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5;
 
@@ -24,11 +26,11 @@ $identifier = $input['identifier'] ?? '';
 $password = $input['password'] ?? '';
 $institutionId = (int)($input['institution_id'] ?? 0);
 if (!$identifier || !$password || !$institutionId) {
-    jsonResponse(['error' => 'missing_fields'], 422);
+    jsonError('missing_fields', 'Identifier, password, and institution are required.', 422);
 }
 $institution = InstitutionService::getInstitution($institutionId);
 if (!$institution) {
-    jsonResponse(['error' => 'invalid_institution'], 400);
+    jsonError('invalid_institution', 'Institution not found.', 400);
 }
 $rateLimiter = new RateLimiter(
     RateLimitStoreFactory::create(),
@@ -37,12 +39,12 @@ $rateLimiter = new RateLimiter(
 );
 $rateLimitKey = getRateLimitKey($institutionId);
 if ($rateLimiter->tooManyAttempts($rateLimitKey)) {
-    jsonResponse(['error' => 'too_many_attempts'], 429);
+    jsonError('too_many_attempts', 'Too many login attempts. Please wait and try again.', 429);
 }
 $user = Auth::login($identifier, $password, $institutionId);
 if (!$user) {
     $rateLimiter->recordFailure($rateLimitKey);
-    jsonResponse(['error' => 'invalid_credentials'], 401);
+    jsonError('invalid_credentials', 'Invalid credentials provided.', 401);
 }
 $rateLimiter->reset($rateLimitKey);
 $safeUser = [

@@ -13,7 +13,14 @@ A trading simulation platform with institution-scoped events and stock market me
 
 ### 1. Database
 Import `sql/schema.sql` into your MySQL database.
-Configure database connection in `config/env.php`.
+Configure database connection in `config/env.php` (values come from environment variables).
+
+**Required environment variables:**
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
 
 **Migrations:**
 For updates to an existing database:
@@ -72,6 +79,16 @@ python3 websocket/server.py
 - **Frontend**: Edit files in `public/`.
 - **API**: Edit files in `api/` and classes in `src/`.
 - **Auth**: Google OAuth configured via `institutions` table.
+
+## DB Sanity Check
+
+Run a non-destructive check against your configured MySQL/MariaDB instance:
+
+```bash
+php scripts/db_sanity_check.php
+```
+
+The script verifies core tables, runs basic SELECT/INSERT/UPDATE/DELETE logic inside a transaction, and exits non-zero on failure.
 
 ## License
 Proprietary.

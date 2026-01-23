@@ -9,6 +9,57 @@ function jsonResponse($data, int $code = 200): void
     exit;
 }
 
+function jsonError(string $code, string $message, int $status = 400, array $meta = []): void
+{
+    $payload = ['error' => ['code' => $code, 'message' => $message]];
+    if (!empty($meta)) {
+        $payload['error']['meta'] = $meta;
+    }
+    jsonResponse($payload, $status);
+}
+
+function initApiRequest(): void
+{
+    static $initialized = false;
+    if ($initialized) {
+        return;
+    }
+    $initialized = true;
+
+    set_error_handler(function (int $severity, string $message, string $file, int $line): bool {
+        if (!(error_reporting() & $severity)) {
+            return false;
+        }
+        throw new ErrorException($message, 0, $severity, $file, $line);
+    });
+
+    set_exception_handler(function (Throwable $e): void {
+        $env = getenv('APP_ENV') ?: 'production';
+        $isProduction = $env === 'production';
+        $code = $e instanceof PDOException ? 'db_error' : 'server_error';
+        $message = $isProduction
+            ? 'Something went wrong while processing your request. Please try again.'
+            : $e->getMessage();
+
+        error_log(sprintf(
+            "[%s] %s in %s:%d\n%s",
+            $code,
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine(),
+            $e->getTraceAsString()
+        ));
+
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+        }
+
+        echo json_encode(['error' => ['code' => $code, 'message' => $message]]);
+        exit;
+    });
+}
+
 function sanitizeUser(array $user): array
 {
     return [
@@ -25,7 +76,7 @@ function sanitizeUser(array $user): array
 function requireManager(array $user): void
 {
     if ($user['role'] !== 'manager' && $user['role'] !== 'admin') {
-        jsonResponse(['error' => 'forbidden'], 403);
+        jsonError('forbidden', 'You do not have permission to access this resource.', 403);
     }
 }
 
@@ -35,7 +86,7 @@ function validateTimeRange($startsAt, $endsAt): void
         $startTimestamp = strtotime($startsAt);
         $endTimestamp = strtotime($endsAt);
         if ($startTimestamp === false || $endTimestamp === false || $startTimestamp >= $endTimestamp) {
-            jsonResponse(['error' => 'invalid_time_range'], 422);
+            jsonError('invalid_time_range', 'Start time must be before end time.', 422);
         }
     }
 }

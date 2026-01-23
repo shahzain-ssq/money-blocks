@@ -5,6 +5,8 @@ require_once __DIR__ . '/../src/InstitutionService.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/Proxy.php';
 
+initApiRequest();
+
 function isLoopbackHost(string $host): bool
 {
     $hostLower = strtolower($host);
@@ -70,7 +72,7 @@ function isHttpsRequest(): bool
 $institutionId = (int)($_GET['institution_id'] ?? 0);
 $institution = $institutionId ? InstitutionService::getInstitution($institutionId) : null;
 if (!$institution || empty($institution['google_client_id'])) {
-    jsonResponse(['error' => 'invalid_institution'], 400);
+    jsonError('invalid_institution', 'Institution is not configured for Google login.', 400);
 }
 Auth::startSession();
 $state = bin2hex(random_bytes(16));
@@ -91,10 +93,7 @@ if ($isProduction) {
     $hasAppHost = $appHost !== '';
     $defaultHostIsLoopback = $defaultHost === '' ? false : isLoopbackHost($defaultHost);
     if ((!$hasAllowedHosts && !$hasAppHost) || $defaultHostIsLoopback) {
-        jsonResponse([
-            'error' => 'server_not_configured',
-            'message' => 'Set APP_HOST or ALLOWED_OAUTH_HOSTS for production (non-loopback hosts only).',
-        ], 500);
+        jsonError('server_not_configured', 'Set APP_HOST or ALLOWED_OAUTH_HOSTS for production (non-loopback hosts only).', 500);
     }
 }
 
@@ -124,10 +123,7 @@ if ($isProduction && ($redirectHost === 'localhost' || isLoopbackHost($redirectH
 
 if (!$isValidHost || !$isValidScheme || !$isValidPath) {
     if ($isProduction && ($redirectHost === '' || $redirectHost === 'localhost' || isLoopbackHost($redirectHost))) {
-        jsonResponse([
-            'error' => 'server_not_configured',
-            'message' => 'Configure GOOGLE_REDIRECT_URI, APP_HOST, or ALLOWED_OAUTH_HOSTS with a non-loopback host.',
-        ], 500);
+        jsonError('server_not_configured', 'Configure GOOGLE_REDIRECT_URI, APP_HOST, or ALLOWED_OAUTH_HOSTS with a non-loopback host.', 500);
     }
 
     $redirectUri = $defaultRedirect;

@@ -1,13 +1,15 @@
 <?php
 require_once __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/../src/Helpers.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/ScenarioService.php';
+
+initApiRequest();
 
 $user = Auth::requireAuth();
 
 if ($user['role'] !== 'admin' && $user['role'] !== 'manager') {
-    http_response_code(403);
-    jsonResponse(['error' => 'Forbidden']);
+    jsonError('forbidden', 'You do not have access to manage scenarios.', 403);
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -19,8 +21,7 @@ if ($method === 'GET') {
 elseif ($method === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!isset($input['title'])) {
-        http_response_code(400);
-        jsonResponse(['error' => 'Title required']);
+        jsonError('title_required', 'Scenario title is required.', 400);
     }
 
     // Validate starts_at if provided (UTC string)
@@ -36,5 +37,5 @@ elseif ($method === 'POST') {
     }
 }
 else {
-    http_response_code(405);
+    jsonError('method_not_allowed', 'Method not allowed.', 405);
 }

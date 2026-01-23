@@ -6,6 +6,8 @@ require_once __DIR__ . '/../src/Database.php';
 require_once __DIR__ . '/../src/CrisisService.php';
 require_once __DIR__ . '/../src/BroadcastService.php';
 
+initApiRequest();
+
 $user = Auth::requireAuth();
 requireManager($user);
 $method = $_SERVER['REQUEST_METHOD'];
@@ -20,7 +22,7 @@ $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 if ($method === 'POST') {
     $title = trim($input['title'] ?? '');
     if ($title === '') {
-        jsonResponse(['error' => 'title_required'], 422);
+        jsonError('title_required', 'Scenario title is required.', 422);
     }
     $startsAt = $input['starts_at'] ?? null;
     $endsAt = $input['ends_at'] ?? null;
@@ -51,12 +53,12 @@ if ($method === 'POST') {
 if ($method === 'PUT') {
     $id = (int)($_GET['id'] ?? 0);
     if (!$id) {
-        jsonResponse(['error' => 'id_required'], 422);
+        jsonError('id_required', 'Scenario ID is required.', 422);
     }
 
     $title = trim($input['title'] ?? '');
     if ($title === '') {
-        jsonResponse(['error' => 'title_required'], 422);
+        jsonError('title_required', 'Scenario title is required.', 422);
     }
 
     $startsAt = $input['starts_at'] ?? null;
@@ -66,7 +68,7 @@ if ($method === 'PUT') {
     $check = $pdo->prepare('SELECT id FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
     $check->execute([$id, $user['institution_id']]);
     if (!$check->fetch()) {
-        jsonResponse(['error' => 'not_found'], 404);
+        jsonError('not_found', 'Scenario not found.', 404);
     }
 
     $stmt = $pdo->prepare('UPDATE crisis_scenarios SET title = ?, description = ?, status = ?, starts_at = ?, ends_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND institution_id = ?');
@@ -95,14 +97,14 @@ if ($method === 'PUT') {
 if ($method === 'DELETE') {
     $id = (int)($_GET['id'] ?? ($input['id'] ?? 0));
     if (!$id) {
-        jsonResponse(['error' => 'id_required'], 422);
+        jsonError('id_required', 'Scenario ID is required.', 422);
     }
     $stmt = $pdo->prepare('DELETE FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
     $stmt->execute([$id, $user['institution_id']]);
     if ($stmt->rowCount() === 0) {
-        jsonResponse(['error' => 'not_found'], 404);
+        jsonError('not_found', 'Scenario not found.', 404);
     }
     jsonResponse(['ok' => true]);
 }
 
-jsonResponse(['error' => 'unsupported_method'], 405);
+jsonError('unsupported_method', 'Method not allowed.', 405);

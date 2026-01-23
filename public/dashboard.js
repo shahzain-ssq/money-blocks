@@ -1,4 +1,5 @@
 import { WebSocketManager } from './js/ws-manager.js';
+import { fetchJson, getErrorMessage } from './js/api.js';
 
 let configPromise;
 let debounceTimer;
@@ -10,39 +11,52 @@ function debouncedInit() {
 
 async function loadConfig() {
   if (!configPromise) {
-    configPromise = fetch('/api/config.php').then((res) => {
-      if (!res.ok) throw new Error('Failed to load config');
-      return res.json();
-    });
+    configPromise = fetchJson('/api/config.php');
   }
   return configPromise;
 }
 
+function setDashboardError(message) {
+  const el = document.getElementById('dashboardError');
+  if (!el) return;
+  el.textContent = message;
+  el.style.display = 'block';
+}
+
+function clearDashboardError() {
+  const el = document.getElementById('dashboardError');
+  if (!el) return;
+  el.textContent = '';
+  el.style.display = 'none';
+}
+
+function redirectIfUnauthorized(err) {
+  if (err?.status === 401 || err?.code === 'unauthorized') {
+    window.location = '/';
+    return true;
+  }
+  return false;
+}
+
 async function init() {
   try {
+    clearDashboardError();
     const appConfig = await loadConfig();
-    const meRes = await fetch('/api/auth_me.php');
-    if (!meRes.ok) {
-      window.location = '/';
-      return;
-    }
-    const me = await meRes.json();
+    const me = await fetchJson('/api/auth_me.php');
     if (!me.user) return window.location = '/';
-    const [portfolioRes, stocksRes, crisisRes] = await Promise.all([
-      fetch('/api/portfolio.php'),
-      fetch('/api/stocks.php'),
-      fetch('/api/crisis.php')
+    const [portfolio, stocks, crisis] = await Promise.all([
+      fetchJson('/api/portfolio.php'),
+      fetchJson('/api/stocks.php'),
+      fetchJson('/api/crisis.php')
     ]);
-    if (!portfolioRes.ok || !stocksRes.ok || !crisisRes.ok) {
-      throw new Error('Failed to load dashboard data');
+    if (portfolio.warnings && portfolio.warnings.length > 0) {
+      setDashboardError(portfolio.warnings[0]);
     }
-    const portfolio = await portfolioRes.json();
-    const stocks = await stocksRes.json();
-    const crisis = await crisisRes.json();
     document.getElementById('cash').textContent = `Cash Balance: ${portfolio.portfolio.cash_balance}`;
     const posBody = document.querySelector('#positions tbody');
     posBody.innerHTML = '';
-    portfolio.positions.forEach((p) => {
+    const positions = portfolio.positions || [];
+    positions.forEach((p) => {
       const tr = document.createElement('tr');
       const tickerTd = document.createElement('td');
       tickerTd.textContent = p.ticker;
@@ -55,10 +69,14 @@ async function init() {
       tr.appendChild(priceTd);
       posBody.appendChild(tr);
     });
+    if (positions.length === 0) {
+      posBody.innerHTML = '<tr><td colspan="3" class="text-center muted">No positions yet.</td></tr>';
+    }
 
     const stocksEl = document.getElementById('stocks');
     stocksEl.innerHTML = '';
-    stocks.stocks.forEach((s) => {
+    const stockList = stocks.stocks || [];
+    stockList.forEach((s) => {
       const card = document.createElement('div');
       card.classList.add('card');
 
@@ -88,10 +106,14 @@ async function init() {
 
       stocksEl.appendChild(card);
     });
+    if (stockList.length === 0) {
+      stocksEl.innerHTML = '<p class="muted">No active stocks available.</p>';
+    }
 
     const shortsBody = document.querySelector('#shorts tbody');
     shortsBody.innerHTML = '';
-    portfolio.shorts.forEach((sh) => {
+    const shorts = portfolio.shorts || [];
+    shorts.forEach((sh) => {
       const tr = document.createElement('tr');
       const tickerTd = document.createElement('td');
       tickerTd.textContent = sh.ticker;
@@ -100,17 +122,21 @@ async function init() {
       const openPriceTd = document.createElement('td');
       openPriceTd.textContent = sh.open_price;
       const expiresTd = document.createElement('td');
-      expiresTd.textContent = sh.expires_at;
+      expiresTd.textContent = sh.expires_at ? new Date(`${sh.expires_at}Z`).toLocaleString() : '-';
       tr.appendChild(tickerTd);
       tr.appendChild(qtyTd);
       tr.appendChild(openPriceTd);
       tr.appendChild(expiresTd);
       shortsBody.appendChild(tr);
     });
+    if (shorts.length === 0) {
+      shortsBody.innerHTML = '<tr><td colspan="4" class="text-center muted">No active shorts.</td></tr>';
+    }
 
     const scenariosEl = document.getElementById('scenarios');
     scenariosEl.innerHTML = '';
-    crisis.scenarios.forEach((sc) => {
+    const scenarios = crisis.scenarios || [];
+    scenarios.forEach((sc) => {
       const li = document.createElement('li');
       const strong = document.createElement('strong');
       strong.textContent = sc.title;
@@ -118,6 +144,9 @@ async function init() {
       li.appendChild(document.createTextNode(` - ${sc.description}`));
       scenariosEl.appendChild(li);
     });
+    if (scenarios.length === 0) {
+      scenariosEl.innerHTML = '<li class="muted">No active scenarios.</li>';
+    }
 
     // Initialize WS Manager
     if (appConfig.wsPublicUrl) {
@@ -150,7 +179,8 @@ async function init() {
 
   } catch (err) {
     console.error('Dashboard initialization failed:', err);
-    alert('Failed to load dashboard. Please refresh the page.');
+    if (redirectIfUnauthorized(err)) return;
+    setDashboardError(getErrorMessage(err, 'Failed to load dashboard data. Please refresh.'));
   }
 }
 
@@ -159,20 +189,16 @@ async function trade(stockId, type) {
   if (!qty) return;
   try {
     const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-    const res = await fetch(endpoint, { 
+    const data = await fetchJson(endpoint, { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' }, 
       body: JSON.stringify({ stock_id: stockId, quantity: Number(qty) }) 
     });
-    if (!res.ok) {
-      throw new Error(`Trade failed with status ${res.status}`);
-    }
-    const data = await res.json();
     alert(data.message || 'Trade executed successfully');
     debouncedInit();
   } catch (err) {
     console.error('Trade failed:', err);
-    alert('Trade failed. Please try again.');
+    alert(getErrorMessage(err, 'Trade failed. Please try again.'));
   }
 }
 
