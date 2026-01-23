@@ -137,7 +137,8 @@ function initChart() {
 }
 
 function tryCreateChart() {
-    if (chart || !chartContainer) return true;
+    if (chart) return true;
+    if (!chartContainer) return false;
     const width = chartContainer.clientWidth;
     const height = chartContainer.clientHeight;
     if (width === 0 || height === 0) return false;
@@ -195,6 +196,20 @@ function flushPendingCandleData() {
     if (pendingFitContent && chart) {
         chart.timeScale().fitContent();
     }
+    pendingCandleData = null;
+    pendingFitContent = false;
+}
+
+function destroyChart() {
+    if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+    }
+    if (chart) {
+        chart.remove();
+        chart = null;
+    }
+    candleSeries = null;
     pendingCandleData = null;
     pendingFitContent = false;
 }
@@ -363,4 +378,5 @@ function updateChart(price, timestamp) {
     }
 }
 
+window.addEventListener('beforeunload', destroyChart);
 init();
