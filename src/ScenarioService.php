@@ -11,6 +11,15 @@ class ScenarioService
         return $stmt->fetchAll();
     }
 
+    public static function getById(int $id, int $institutionId): ?array
+    {
+        $pdo = Database::getConnection();
+        $stmt = $pdo->prepare('SELECT * FROM crisis_scenarios WHERE id = ? AND institution_id = ?');
+        $stmt->execute([$id, $institutionId]);
+        $scenario = $stmt->fetch();
+        return $scenario ?: null;
+    }
+
     public static function create(int $institutionId, string $title, string $description, string $status, ?string $startsAt): int
     {
         $pdo = Database::getConnection();

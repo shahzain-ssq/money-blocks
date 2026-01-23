@@ -67,7 +67,7 @@
               <h3>Participants</h3>
               <div class="form-row">
                   <input type="text" id="participantSearch" class="input" placeholder="Search..." />
-                  <button class="btn" onclick="document.getElementById('addParticipantModal').style.display='block'">+ Add</button>
+                  <button class="btn" type="button" id="addParticipantBtn">+ Add</button>
               </div>
               <div id="participantsList" class="scrollable-list">
                   <!-- JS Populated -->
@@ -79,7 +79,7 @@
               <h3>Stocks Management</h3>
                <div class="form-row">
                   <input type="text" id="stockSearch" class="input" placeholder="Search..." />
-                  <button class="btn" onclick="openAddStockModal()">+ Add</button>
+                  <button class="btn" type="button" id="addStockBtn">+ Add</button>
               </div>
               <div id="stocksList" class="scrollable-list">
                    <!-- JS Populated -->
@@ -95,14 +95,14 @@
                   <label>Short Duration Options (seconds, comma separated)</label>
                   <input type="text" id="shortDurations" class="input" placeholder="3600, 86400" />
               </div>
-              <button class="btn btn-primary" id="saveConfigBtn">Save Config</button>
+              <button class="btn btn-primary" id="saveConfigBtn" type="button">Save Config</button>
           </div>
 
           <!-- Crisis -->
            <div class="admin-card full-width">
               <h3>Crisis Scenarios</h3>
               <div class="form-row" style="margin-bottom: 1rem;">
-                  <button class="btn" onclick="openScenarioModal()">+ Add Scenario</button>
+                  <button class="btn" type="button" id="addScenarioBtn">+ Add Scenario</button>
               </div>
               <div id="scenariosList" class="scrollable-list">
                   <!-- JS Populated -->
@@ -114,12 +114,13 @@
     <!-- Add Participant Modal -->
     <div id="addParticipantModal" class="modal">
         <div class="modal-content">
-             <span class="modal-close" onclick="document.getElementById('addParticipantModal').style.display='none'">&times;</span>
+             <span class="modal-close" data-action="close-modal">&times;</span>
              <h3>Add Participant</h3>
+             <div id="participantFormError" class="alert alert-error" style="display:none;"></div>
              <form id="addParticipantForm">
                  <div class="form-group"><label>Username</label><input class="input" name="username" required></div>
                  <div class="form-group"><label>Email</label><input class="input" name="email" type="email"></div>
-                 <button class="btn btn-primary full-width">Create</button>
+                 <button class="btn btn-primary full-width" type="submit">Create</button>
              </form>
         </div>
     </div>
@@ -127,8 +128,9 @@
     <!-- Scenario Modal -->
     <div id="scenarioModal" class="modal">
         <div class="modal-content">
-             <span class="modal-close" onclick="document.getElementById('scenarioModal').style.display='none'">&times;</span>
+             <span class="modal-close" data-action="close-modal">&times;</span>
              <h3 id="scenarioModalTitle">Add Scenario</h3>
+             <div id="scenarioFormError" class="alert alert-error" style="display:none;"></div>
              <form id="scenarioForm">
                  <input type="hidden" name="id" id="scenarioId">
                  <div class="form-group"><label>Title</label><input class="input" name="title" id="scenarioTitle" required></div>
@@ -146,7 +148,7 @@
                      <input class="input" type="datetime-local" name="starts_at" id="scenarioStart">
                      <small class="muted">Leave blank for immediate if published. Saved in UTC on the server.</small>
                  </div>
-                 <button class="btn btn-primary full-width">Save</button>
+                 <button class="btn btn-primary full-width" type="submit">Save</button>
              </form>
         </div>
     </div>
@@ -154,14 +156,15 @@
     <!-- Add Stock Modal -->
     <div id="addStockModal" class="modal">
         <div class="modal-content">
-             <span class="modal-close" onclick="document.getElementById('addStockModal').style.display='none'">&times;</span>
+             <span class="modal-close" data-action="close-modal">&times;</span>
              <h3>Add Stock</h3>
+             <div id="stockFormError" class="alert alert-error" style="display:none;"></div>
              <form id="addStockForm">
                  <div class="form-group"><label>Ticker</label><input class="input" name="ticker" required></div>
                  <div class="form-group"><label>Name</label><input class="input" name="name" required></div>
                  <div class="form-group"><label>Initial Price</label><input class="input" name="initial_price" type="number" step="0.01" required></div>
                   <div class="form-group"><label>Total Limit</label><input class="input" name="total_limit" type="number"></div>
-                 <button class="btn btn-primary full-width">Create</button>
+                 <button class="btn btn-primary full-width" type="submit">Create</button>
              </form>
         </div>
     </div>

@@ -13,6 +13,14 @@ $method = $_SERVER['REQUEST_METHOD'];
 $pdo = Database::getConnection();
 
 if ($method === 'GET') {
+    $id = (int)($_GET['id'] ?? 0);
+    if ($id) {
+        $stock = StockService::getById($id, (int)$user['institution_id']);
+        if (!$stock) {
+            jsonError('not_found', 'Stock not found.', 404);
+        }
+        jsonResponse(['ok' => true, 'stock' => $stock]);
+    }
     jsonResponse(['ok' => true, 'stocks' => StockService::listStocks((int)$user['institution_id'])]);
 }
 

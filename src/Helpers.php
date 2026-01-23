@@ -15,6 +15,7 @@ function jsonError(string $code, string $message, int $status = 400, array $meta
     if (!empty($meta)) {
         $payload['error']['meta'] = $meta;
     }
+    logDev(sprintf('API error [%s]: %s', $code, $message));
     jsonResponse($payload, $status);
 }
 
@@ -58,6 +59,14 @@ function initApiRequest(): void
         echo json_encode(['error' => ['code' => $code, 'message' => $message]]);
         exit;
     });
+}
+
+function logDev(string $message): void
+{
+    $env = getenv('APP_ENV') ?: 'production';
+    if ($env !== 'production') {
+        error_log($message);
+    }
 }
 
 function sanitizeUser(array $user): array
