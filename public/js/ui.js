@@ -52,7 +52,7 @@ export function formatPercent(value) {
   const percent = Number(value);
   const normalized = Number.isFinite(percent) ? percent : 0;
   const sign = normalized > 0 ? '+' : '';
-return `${sign}${percentFormatter.format(normalized)}%`;
+  return `${sign}${percentFormatter.format(normalized)}%`;
 }
 
 export function formatDateTime(value, fallback = '-') {
@@ -145,9 +145,57 @@ export async function requireUser({ managerOnly = false } = {}) {
   }
 
   bindLogoutButton();
+  bindMobileNav();
   setManagerLink(user);
 
   return user;
+}
+
+export function bindMobileNav() {
+  const toggleBtn = document.getElementById('mobileNavToggle');
+  const sidebar = document.querySelector('.sidebar');
+  if (!toggleBtn || !sidebar || toggleBtn.dataset.bound === 'true') {
+    return;
+  }
+
+  toggleBtn.dataset.bound = 'true';
+  if (!sidebar.id) sidebar.id = 'app-sidebar';
+  toggleBtn.setAttribute('aria-controls', sidebar.id);
+
+  const initIsOpen = sidebar.classList.contains('is-open');
+  toggleBtn.setAttribute('aria-expanded', initIsOpen ? 'true' : 'false');
+  if (!initIsOpen) {
+    sidebar.setAttribute('aria-hidden', 'true');
+    sidebar.setAttribute('inert', '');
+  } else {
+    sidebar.removeAttribute('aria-hidden');
+    sidebar.removeAttribute('inert');
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    const isNowOpen = sidebar.classList.toggle('is-open');
+    toggleBtn.setAttribute('aria-expanded', isNowOpen ? 'true' : 'false');
+    if (!isNowOpen) {
+      sidebar.setAttribute('aria-hidden', 'true');
+      sidebar.setAttribute('inert', '');
+    } else {
+      sidebar.removeAttribute('aria-hidden');
+      sidebar.removeAttribute('inert');
+    }
+  });
+
+  // Close drawer if clicking outside of the sidebar on mobile
+  document.addEventListener('click', (event) => {
+    if (window.innerWidth <= 768 &&
+      sidebar.classList.contains('is-open') &&
+      !sidebar.contains(event.target) &&
+      !toggleBtn.contains(event.target)) {
+      sidebar.classList.remove('is-open');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      sidebar.setAttribute('aria-hidden', 'true');
+      sidebar.setAttribute('inert', '');
+    }
+  });
 }
 
 export function renderMetricCards(container, items) {
