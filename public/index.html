@@ -96,14 +96,15 @@
     </main>
 
     <!-- Modal for SSO -->
-    <div id="institutionModal" class="modal" aria-hidden="true">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>Select Institution</h3>
-            <button type="button" class="modal-close" aria-label="Close">&times;</button>
-          </div>
+    <div id="institutionModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="institutionModalTitle">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="institutionModalTitle">Select Institution</h3>
+          <button type="button" class="modal-close" aria-label="Close">&times;</button>
+        </div>
         <p class="muted">Choose your institution to be redirected to their login portal.</p>
         <div class="form-group">
+           <label class="sr-only" for="institutionSearch">Select institution</label>
            <input type="text" id="institutionSearch" class="input" placeholder="Search institutions" autocomplete="off">
            <div id="institutionList" class="list-group">
              <!-- Populated by JS -->

@@ -787,6 +787,9 @@ textarea.input {
   inset: 0;
   z-index: 30;
   display: none;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
   padding: 1.5rem;
   background: rgba(2, 7, 16, 0.7);
   backdrop-filter: blur(8px);
@@ -796,6 +799,8 @@ textarea.input {
   position: relative;
   width: min(540px, 100%);
   margin: clamp(2rem, 10vh, 6rem) auto;
+  max-height: calc(100vh - 3rem);
+  overflow: auto;
   padding: 1.5rem;
   background: linear-gradient(180deg, rgba(18, 34, 61, 0.96), rgba(10, 21, 40, 0.98));
   border: 1px solid rgba(132, 157, 210, 0.2);

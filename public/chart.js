@@ -195,6 +195,8 @@ async function selectStock(stock) {
   document.querySelectorAll('.watchlist-item').forEach((item) => {
     item.classList.toggle('active', item.dataset.id === String(stock.id));
   });
+  currentCandles = [];
+  setCandlestickData([], true);
 
   try {
     clearChartError();

@@ -87,7 +87,7 @@ const btn = document.getElementById('institutionLoginBtn');
 const closeSpan = document.getElementsByClassName('modal-close')[0];
 
 btn.onclick = function() {
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
   document.getElementById('institutionSearch').value = '';
   renderInstitutionList(institutions);

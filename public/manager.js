@@ -9,6 +9,7 @@ const state = {
 };
 
 let controlsBound = false;
+let shortDurationsLoaded = false;
 
 function setManagerError(message) {
   const el = document.getElementById('managerError');
@@ -62,7 +63,7 @@ function openModal(id, title) {
       heading.textContent = title;
     }
   }
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
 }
 
 function closeModal(modal) {
@@ -126,7 +127,7 @@ function bindControls() {
       return;
     }
     document.querySelectorAll('.modal').forEach((modal) => {
-      if (modal.style.display === 'block') {
+      if (modal.style.display === 'flex') {
         closeModal(modal);
       }
     });
@@ -548,6 +549,7 @@ async function submitStockForm(event) {
 }
 
 async function loadConfig() {
+  shortDurationsLoaded = false;
   try {
     const data = await fetchJson('/api/manager_config.php');
     const durations = Array.isArray(data?.short_durations)
@@ -558,6 +560,7 @@ async function loadConfig() {
 
     if (durations && durations.length === data.short_durations.length) {
       document.getElementById('shortDurations').value = durations.join(', ');
+      shortDurationsLoaded = true;
     }
   } catch (error) {
     console.warn('Manager config load failed', error);
@@ -565,6 +568,11 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
+  if (!shortDurationsLoaded) {
+    alert('Configuration is still loading or unavailable. Please retry after the current values load.');
+    return;
+  }
+
   const raw = document.getElementById('shortDurations').value;
   const durations = raw
     .split(',')
@@ -579,6 +587,7 @@ async function saveConfig() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ short_durations: durations }),
     });
+    shortDurationsLoaded = true;
     alert('Configuration saved.');
   } catch (error) {
     if (handleAuthError(error)) {
@@ -689,7 +698,7 @@ async function submitScenarioForm(event) {
 
   if (payload.starts_at) {
     const localDate = new Date(payload.starts_at);
-    const utcIso = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000).toISOString();
+    const utcIso = localDate.toISOString();
     payload.starts_at = utcIso.slice(0, 19).replace('T', ' ');
   }
 

@@ -23,6 +23,10 @@ let durationsLoaded = false;
 let configPromise;
 let debounceTimer;
 let queryApplied = false;
+let lastRefreshTime = 0;
+let refreshRunning = false;
+let queuedRefresh = false;
+const REFRESH_THROTTLE_MS = 250;
 
 function setTradeError(message) {
   const el = document.getElementById('tradeError');
@@ -43,8 +47,48 @@ function getSelectedStock() {
 }
 
 function debounceRefresh() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => loadData().then(updateUI).catch(handleFatalError), 250);
+  const now = Date.now();
+  const elapsed = now - lastRefreshTime;
+
+  if (refreshRunning) {
+    queuedRefresh = true;
+    return;
+  }
+
+  if (elapsed >= REFRESH_THROTTLE_MS) {
+    runRefresh();
+    return;
+  }
+
+  if (debounceTimer) {
+    return;
+  }
+
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    if (refreshRunning) {
+      queuedRefresh = true;
+      return;
+    }
+    runRefresh();
+  }, Math.max(REFRESH_THROTTLE_MS - elapsed, 0));
+}
+
+async function runRefresh() {
+  refreshRunning = true;
+  lastRefreshTime = Date.now();
+  try {
+    await loadData();
+    updateUI();
+  } catch (error) {
+    handleFatalError(error);
+  } finally {
+    refreshRunning = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      debounceRefresh();
+    }
+  }
 }
 
 function handleFatalError(error) {

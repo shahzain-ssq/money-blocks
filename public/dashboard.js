@@ -17,11 +17,18 @@ let debounceTimer;
 let wsInitialized = false;
 let lastInitTime = 0;
 let pendingInit = false;
+let initRunning = false;
+let queuedRefresh = false;
 const INIT_THROTTLE_MS = 300;
 
 function debouncedInit() {
   const now = Date.now();
   const elapsed = now - lastInitTime;
+
+  if (initRunning) {
+    queuedRefresh = true;
+    return;
+  }
 
   if (elapsed >= INIT_THROTTLE_MS && !pendingInit) {
     if (debounceTimer) {
@@ -41,7 +48,10 @@ function debouncedInit() {
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     pendingInit = false;
-    lastInitTime = Date.now();
+    if (initRunning) {
+      queuedRefresh = true;
+      return;
+    }
     init();
   }, Math.max(INIT_THROTTLE_MS - elapsed, 0));
 }
@@ -318,6 +328,12 @@ function renderScenarios(scenarios) {
 }
 
 async function init() {
+  if (initRunning) {
+    queuedRefresh = true;
+    return;
+  }
+
+  initRunning = true;
   try {
     lastInitTime = Date.now();
     clearDashboardError();
@@ -365,6 +381,12 @@ async function init() {
   } catch (error) {
     console.error('Dashboard initialization failed:', error);
     setDashboardError(getErrorMessage(error, 'Failed to load dashboard data. Please refresh.'));
+  } finally {
+    initRunning = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      debouncedInit();
+    }
   }
 }
 

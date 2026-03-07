@@ -11,7 +11,7 @@ class CrisisService
               AND status = \'published\'
               AND (starts_at IS NULL OR starts_at <= CURRENT_TIMESTAMP)
               AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP)
-            ORDER BY COALESCE(starts_at, created_at) DESC, created_at DESC');
+            ORDER BY COALESCE(starts_at, created_at) DESC, created_at DESC, id DESC');
         $stmt->execute([$institutionId]);
         return $stmt->fetchAll();
     }
