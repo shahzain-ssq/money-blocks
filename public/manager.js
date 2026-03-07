@@ -550,7 +550,15 @@ async function submitStockForm(event) {
 async function loadConfig() {
   try {
     const data = await fetchJson('/api/manager_config.php');
-    document.getElementById('shortDurations').value = (data.short_durations || []).map((item) => item.duration_seconds).join(', ');
+    const durations = Array.isArray(data?.short_durations)
+      ? data.short_durations
+        .map((item) => Number(item?.duration_seconds))
+        .filter((value) => Number.isFinite(value) && value > 0)
+      : null;
+
+    if (durations && durations.length === data.short_durations.length) {
+      document.getElementById('shortDurations').value = durations.join(', ');
+    }
   } catch (error) {
     console.warn('Manager config load failed', error);
   }
@@ -558,7 +566,12 @@ async function loadConfig() {
 
 async function saveConfig() {
   const raw = document.getElementById('shortDurations').value;
-  const durations = raw.split(',').map((value) => Number.parseInt(value.trim(), 10)).filter((value) => Number.isFinite(value) && value > 0);
+  const durations = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => /^\d+$/.test(value))
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
   try {
     await fetchJson('/api/manager_config.php', {

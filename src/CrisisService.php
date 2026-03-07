@@ -8,7 +8,7 @@ class CrisisService
         $pdo = Database::getConnection();
         $stmt = $pdo->prepare('SELECT * FROM crisis_scenarios
             WHERE institution_id = ?
-              AND status = "published"
+              AND status = \'published\'
               AND (starts_at IS NULL OR starts_at <= CURRENT_TIMESTAMP)
               AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP)
             ORDER BY COALESCE(starts_at, created_at) DESC, created_at DESC');

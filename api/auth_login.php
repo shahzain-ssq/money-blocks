@@ -20,7 +20,27 @@ function getRateLimitKey(int $institutionId): string
     if (isTrustedProxyAddress($remoteAddr, $trustedProxies)) {
         $forwardedFor = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
         if ($forwardedFor !== '') {
-            $ip = trim(explode(',', $forwardedFor)[0]);
+            $hops = array_map('trim', explode(',', $forwardedFor));
+            $sanitizedHops = array_filter($hops, static fn (string $hop): bool => $hop !== '');
+
+            if (count($hops) === count($sanitizedHops)) {
+                $allValid = true;
+                foreach ($sanitizedHops as $hop) {
+                    if (filter_var($hop, FILTER_VALIDATE_IP) === false) {
+                        $allValid = false;
+                        break;
+                    }
+                }
+
+                if ($allValid && $sanitizedHops !== []) {
+                    foreach (array_reverse($sanitizedHops) as $hop) {
+                        if (!isTrustedProxyAddress($hop, $trustedProxies)) {
+                            $ip = $hop;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
     return $institutionId . '|' . $ip;

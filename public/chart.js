@@ -18,6 +18,7 @@ let pendingCandleData = null;
 let pendingFitContent = false;
 let currentStock = null;
 let currentCandles = [];
+let selectionVersion = 0;
 
 function setChartError(message) {
   const el = document.getElementById('chartError');
@@ -186,6 +187,10 @@ async function selectStock(stock) {
     return;
   }
 
+  const localSelectedId = Number(stock.id);
+  selectionVersion += 1;
+  const localSelectionVersion = selectionVersion;
+
   updateSelectedStockSummary(stock);
   document.querySelectorAll('.watchlist-item').forEach((item) => {
     item.classList.toggle('active', item.dataset.id === String(stock.id));
@@ -202,6 +207,10 @@ async function selectStock(stock) {
         value: Number(pricePoint.price),
       }))
       .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
+
+    if (localSelectionVersion !== selectionVersion || Number(currentStock?.id) !== localSelectedId) {
+      return;
+    }
 
     currentCandles = aggregateToCandles(sorted, 60);
     setCandlestickData(currentCandles, true);

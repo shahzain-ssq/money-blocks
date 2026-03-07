@@ -275,9 +275,88 @@ function updateHoldingsInfo(stock) {
   }
 }
 
+function getTradeValidation(stock, quantity, duration) {
+  if (!stock || !portfolio) {
+    return {
+      isValid: false,
+      message: '',
+      tone: 'negative',
+      projectedCash: 0,
+      currentPositionLabel: '-',
+      expiryText: '-',
+      showExpiry: false,
+      currentPrice: 0,
+      total: 0,
+    };
+  }
+
+  const currentPrice = Number(stock.current_price ?? stock.initial_price ?? 0);
+  const total = currentPrice * quantity;
+  const currentCash = Number(portfolio.cash_balance || 0);
+  let projectedCash = currentCash;
+  let currentPositionLabel = currentMode === 'spot'
+    ? `${formatQuantity(getOwnedQuantity(stock.id))} shares owned`
+    : `${formatQuantity(getOpenShortQuantity(stock.id))} shares short`;
+  let message = '';
+  let tone = 'negative';
+  let expiryText = '-';
+  let showExpiry = false;
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    message = 'Enter a valid quantity greater than zero.';
+  } else if (currentMode === 'spot' && currentAction === 'buy') {
+    projectedCash = currentCash - total;
+    const owned = getOwnedQuantity(stock.id);
+    if (projectedCash < 0) {
+      message = `Insufficient cash. You need ${formatCurrency(total - currentCash)} more to place this order.`;
+    } else if (stock.per_user_limit && owned + quantity > Number(stock.per_user_limit)) {
+      message = `This order exceeds your per-user limit of ${formatQuantity(stock.per_user_limit)} shares.`;
+    } else if (stock.total_limit && quantity > Number(stock.total_limit)) {
+      message = 'This order exceeds the institution-wide stock limit.';
+    }
+  } else if (currentMode === 'spot' && currentAction === 'sell') {
+    const owned = getOwnedQuantity(stock.id);
+    projectedCash = currentCash + total;
+    if (quantity > owned) {
+      message = `Insufficient holdings. You currently own ${formatQuantity(owned)} shares.`;
+    }
+  } else if (currentMode === 'short' && currentAction === 'open') {
+    const openShortQuantity = getOpenShortQuantity(stock.id);
+    currentPositionLabel = `${formatQuantity(openShortQuantity)} shares currently short`;
+    if (!duration) {
+      message = 'Select a valid short duration.';
+    } else if (stock.per_user_short_limit && openShortQuantity + quantity > Number(stock.per_user_short_limit)) {
+      message = `This order exceeds your short limit of ${formatQuantity(stock.per_user_short_limit)} shares.`;
+    } else {
+      showExpiry = true;
+      expiryText = formatDateTime(new Date(Date.now() + duration * 1000));
+    }
+  } else if (currentMode === 'short' && currentAction === 'close') {
+    const { remaining, profit } = estimateShortCloseProfit(stock.id, quantity, currentPrice);
+    if (remaining > 0) {
+      message = `Cannot close more than your current short position of ${formatQuantity(quantity - remaining)} shares.`;
+    } else {
+      projectedCash = currentCash + profit;
+    }
+  }
+
+  return {
+    isValid: message === '',
+    message,
+    tone,
+    projectedCash,
+    currentPositionLabel,
+    expiryText,
+    showExpiry,
+    currentPrice,
+    total,
+  };
+}
+
 function updatePreview() {
   const stock = getSelectedStock();
   const quantity = Number(document.getElementById('quantityInput').value);
+  const duration = Number(document.getElementById('durationSelect').value || 0);
   const validation = document.getElementById('validationMsg');
   const expiryRow = document.getElementById('expiryRow');
   const previewPrice = document.getElementById('previewPrice');
@@ -300,67 +379,21 @@ function updatePreview() {
     return;
   }
 
-  const currentPrice = Number(stock.current_price ?? stock.initial_price ?? 0);
-  const total = currentPrice * quantity;
-  const currentCash = Number(portfolio.cash_balance || 0);
-  let projectedCash = currentCash;
-  let currentPositionLabel = currentMode === 'spot'
-    ? `${formatQuantity(getOwnedQuantity(stock.id))} shares owned`
-    : `${formatQuantity(getOpenShortQuantity(stock.id))} shares short`;
-  let validationMessage = '';
-  let validationTone = 'negative';
+  const validationState = getTradeValidation(stock, quantity, duration);
 
-  previewPrice.textContent = formatCurrency(currentPrice);
-  previewTotal.textContent = formatCurrency(total);
-  previewPosition.textContent = currentPositionLabel;
+  previewPrice.textContent = formatCurrency(validationState.currentPrice);
+  previewTotal.textContent = formatCurrency(validationState.total);
+  previewBalance.textContent = formatCurrency(validationState.projectedCash);
+  previewPosition.textContent = validationState.currentPositionLabel;
 
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    validationMessage = 'Enter a valid quantity greater than zero.';
-  } else if (currentMode === 'spot' && currentAction === 'buy') {
-    projectedCash = currentCash - total;
-    const owned = getOwnedQuantity(stock.id);
-    if (projectedCash < 0) {
-      validationMessage = `Insufficient cash. You need ${formatCurrency(total - currentCash)} more to place this order.`;
-    } else if (stock.per_user_limit && owned + quantity > Number(stock.per_user_limit)) {
-      validationMessage = `This order exceeds your per-user limit of ${formatQuantity(stock.per_user_limit)} shares.`;
-    } else if (stock.total_limit && quantity > Number(stock.total_limit)) {
-      validationMessage = 'This order exceeds the institution-wide stock limit.';
-    }
-  } else if (currentMode === 'spot' && currentAction === 'sell') {
-    const owned = getOwnedQuantity(stock.id);
-    projectedCash = currentCash + total;
-    if (quantity > owned) {
-      validationMessage = `Insufficient holdings. You currently own ${formatQuantity(owned)} shares.`;
-    }
-  } else if (currentMode === 'short' && currentAction === 'open') {
-    projectedCash = currentCash;
-    const openShortQuantity = getOpenShortQuantity(stock.id);
-    const duration = Number(document.getElementById('durationSelect').value || 0);
-    if (!duration) {
-      validationMessage = 'Select a valid short duration.';
-    } else if (stock.per_user_short_limit && openShortQuantity + quantity > Number(stock.per_user_short_limit)) {
-      validationMessage = `This order exceeds your short limit of ${formatQuantity(stock.per_user_short_limit)} shares.`;
-    } else {
-      expiryRow.style.display = 'flex';
-      const expiresAt = new Date(Date.now() + duration * 1000);
-      previewExpiry.textContent = formatDateTime(expiresAt);
-    }
-    currentPositionLabel = `${formatQuantity(openShortQuantity)} shares currently short`;
-  } else if (currentMode === 'short' && currentAction === 'close') {
-    const { remaining, profit } = estimateShortCloseProfit(stock.id, quantity, currentPrice);
-    if (remaining > 0) {
-      validationMessage = `Cannot close more than your current short position of ${formatQuantity(quantity - remaining)} shares.`;
-    } else {
-      projectedCash = currentCash + profit;
-    }
+  if (validationState.showExpiry) {
+    expiryRow.style.display = 'flex';
+    previewExpiry.textContent = validationState.expiryText;
   }
 
-  previewBalance.textContent = formatCurrency(projectedCash);
-  previewPosition.textContent = currentPositionLabel;
-
-  if (validationMessage) {
+  if (!validationState.isValid) {
     submitButton.disabled = true;
-    setInlineStatus(validation, validationMessage, validationTone);
+    setInlineStatus(validation, validationState.message, validationState.tone);
   }
 }
 
@@ -435,8 +468,14 @@ async function handleTrade(event) {
   const button = document.getElementById('submitBtn');
   const validation = document.getElementById('validationMsg');
 
-  if (!stock || !Number.isFinite(quantity) || quantity <= 0) {
+  if (!stock || !portfolio) {
     setInlineStatus(validation, 'Choose an instrument and enter a valid quantity.', 'negative');
+    return;
+  }
+
+  const validationState = getTradeValidation(stock, quantity, duration);
+  if (!validationState.isValid) {
+    setInlineStatus(validation, validationState.message || 'Choose an instrument and enter a valid quantity.', validationState.tone);
     return;
   }
 

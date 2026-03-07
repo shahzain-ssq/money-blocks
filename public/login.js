@@ -1,7 +1,13 @@
 let institutions = [];
-const statusEl = document.getElementById('status');
+let statusEl = document.getElementById('status');
 
 function setStatus(message, tone = 'neutral') {
+  if (!statusEl) {
+    statusEl = document.getElementById('status');
+  }
+  if (!statusEl) {
+    return;
+  }
   statusEl.textContent = message;
   statusEl.dataset.tone = tone;
   statusEl.style.display = message ? 'block' : 'none';

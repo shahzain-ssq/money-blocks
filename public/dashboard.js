@@ -15,10 +15,35 @@ import {
 let configPromise;
 let debounceTimer;
 let wsInitialized = false;
+let lastInitTime = 0;
+let pendingInit = false;
+const INIT_THROTTLE_MS = 300;
 
 function debouncedInit() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => init(), 300);
+  const now = Date.now();
+  const elapsed = now - lastInitTime;
+
+  if (elapsed >= INIT_THROTTLE_MS && !pendingInit) {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    lastInitTime = now;
+    init();
+    return;
+  }
+
+  if (pendingInit) {
+    return;
+  }
+
+  pendingInit = true;
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    pendingInit = false;
+    lastInitTime = Date.now();
+    init();
+  }, Math.max(INIT_THROTTLE_MS - elapsed, 0));
 }
 
 async function loadConfig() {
@@ -294,8 +319,11 @@ function renderScenarios(scenarios) {
 
 async function init() {
   try {
+    lastInitTime = Date.now();
     clearDashboardError();
-    updateWsStatus('ws-status', 'disconnected');
+    if (!wsInitialized) {
+      updateWsStatus('ws-status', 'disconnected');
+    }
 
     const [appConfig, user] = await Promise.all([
       loadConfig(),

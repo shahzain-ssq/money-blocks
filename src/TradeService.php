@@ -9,6 +9,10 @@ class TradeService
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
             if ((int)($stock['active'] ?? 0) !== 1) {
@@ -77,6 +81,10 @@ class TradeService
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
             if ((int)($stock['active'] ?? 0) !== 1) {
