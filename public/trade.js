@@ -231,6 +231,11 @@ function getOpenShortQuantity(stockId) {
   return getOpenShorts(stockId).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 }
 
+function getInstitutionTotalQuantity(stockId) {
+  const stock = stocks.find((item) => Number(item.id) === Number(stockId));
+  return Number(stock?.institution_total_quantity ?? 0);
+}
+
 function estimateShortCloseProfit(stockId, quantity, currentPrice) {
   let remaining = quantity;
   let profit = 0;
@@ -351,11 +356,12 @@ function getTradeValidation(stock, quantity, duration) {
   } else if (currentMode === 'spot' && currentAction === 'buy') {
     projectedCash = currentCash - total;
     const owned = getOwnedQuantity(stock.id);
+    const institutionTotal = getInstitutionTotalQuantity(stock.id);
     if (projectedCash < 0) {
       message = `Insufficient cash. You need ${formatCurrency(total - currentCash)} more to place this order.`;
     } else if (stock.per_user_limit && owned + quantity > Number(stock.per_user_limit)) {
       message = `This order exceeds your per-user limit of ${formatQuantity(stock.per_user_limit)} shares.`;
-    } else if (stock.total_limit && quantity > Number(stock.total_limit)) {
+    } else if (stock.total_limit && institutionTotal + quantity > Number(stock.total_limit)) {
       message = 'This order exceeds the institution-wide stock limit.';
     }
   } else if (currentMode === 'spot' && currentAction === 'sell') {

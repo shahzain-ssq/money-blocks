@@ -1,5 +1,15 @@
 let institutions = [];
 let statusEl = document.getElementById('status');
+let previouslyFocusedElement = null;
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 function setStatus(message, tone = 'neutral') {
   if (!statusEl) {
@@ -13,12 +23,106 @@ function setStatus(message, tone = 'neutral') {
   statusEl.style.display = message ? 'block' : 'none';
 }
 
+function getErrorMessage(data, fallback = 'Login failed.') {
+  if (typeof data?.error === 'string') {
+    return data.error;
+  }
+  if (typeof data?.error?.message === 'string') {
+    return data.error.message;
+  }
+  if (data?.error) {
+    try {
+      return JSON.stringify(data.error);
+    } catch (error) {
+      console.warn('Failed to serialize login error payload', error);
+    }
+  }
+  return fallback;
+}
+
+function getModalFocusableElements() {
+  return Array.from(modal.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+    return element.offsetParent !== null || element === document.activeElement;
+  });
+}
+
+function closeInstitutionModal() {
+  if (!modal) {
+    return;
+  }
+
+  if (modal.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+
+  if (previouslyFocusedElement instanceof HTMLElement) {
+    previouslyFocusedElement.focus();
+  } else if (btn instanceof HTMLElement) {
+    btn.focus();
+  }
+}
+
+function openInstitutionModal() {
+  if (!modal) {
+    return;
+  }
+
+  previouslyFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+
+  const searchInput = document.getElementById('institutionSearch');
+  searchInput.value = '';
+  renderInstitutionList(institutions);
+  searchInput.focus();
+}
+
+function handleModalKeydown(event) {
+  if (modal.getAttribute('aria-hidden') === 'true') {
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeInstitutionModal();
+    return;
+  }
+
+  if (event.key !== 'Tab') {
+    return;
+  }
+
+  const focusable = getModalFocusableElements();
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 async function loadInstitutions() {
   try {
     const res = await fetch('/api/institutions.php');
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data?.error?.message || 'Failed to load institutions.');
+      throw new Error(getErrorMessage(data, 'Failed to load institutions.'));
     }
     institutions = data.institutions || [];
   } catch (e) {
@@ -65,7 +169,7 @@ function renderInstitutionList(list) {
         const res = await fetch(`/api/auth_google_url.php?institution_id=${i.id}`);
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data?.error?.message || 'SSO not configured for this institution.');
+          throw new Error(getErrorMessage(data, 'SSO not configured for this institution.'));
         }
         if (data.url) {
           window.location = data.url;
@@ -84,34 +188,23 @@ function renderInstitutionList(list) {
 // Modal Logic
 const modal = document.getElementById('institutionModal');
 const btn = document.getElementById('institutionLoginBtn');
-const closeSpan = document.getElementsByClassName('modal-close')[0];
+const closeButton = document.getElementsByClassName('modal-close')[0];
 
 btn.onclick = function() {
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-  document.getElementById('institutionSearch').value = '';
-  renderInstitutionList(institutions);
+  openInstitutionModal();
 }
 
-closeSpan.onclick = function() {
-  modal.style.display = 'none';
-  modal.setAttribute('aria-hidden', 'true');
+closeButton.onclick = function() {
+  closeInstitutionModal();
 }
 
 window.onclick = function(event) {
   if (event.target == modal) {
-    modal.style.display = 'none';
-    modal.setAttribute('aria-hidden', 'true');
+    closeInstitutionModal();
   }
 }
 
-closeSpan.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault();
-    modal.style.display = 'none';
-    modal.setAttribute('aria-hidden', 'true');
-  }
-});
+modal.addEventListener('keydown', handleModalKeydown);
 
 // Search Logic
 document.getElementById('institutionSearch').addEventListener('input', (e) => {
@@ -141,7 +234,7 @@ async function handleLogin(e) {
     const res = await fetch('/api/auth_login.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) {
-      setStatus(data?.error?.message || data?.error || 'Login failed.', 'negative');
+      setStatus(getErrorMessage(data, 'Login failed.'), 'negative');
       return;
     }
     setStatus('Login successful. Redirecting...', 'positive');

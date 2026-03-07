@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
+@import 'https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap';
 
 :root {
   --bg-main: #081224;
@@ -30,6 +30,8 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(101, 130, 184, 0.45) transparent;
 }
 
 html {
@@ -39,7 +41,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-family: Manrope, 'Segoe UI', sans-serif;
   color: var(--text-primary);
   background:
     radial-gradient(circle at top left, rgba(61, 121, 255, 0.22), transparent 28%),
@@ -88,11 +90,6 @@ svg {
 ::-webkit-scrollbar-thumb {
   background: rgba(101, 130, 184, 0.38);
   border-radius: 999px;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(101, 130, 184, 0.45) transparent;
 }
 
 .app-shell {
@@ -845,9 +842,15 @@ textarea.input {
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+.actions-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .list-group {
@@ -1102,7 +1105,11 @@ button:focus-visible,
   }
 
   .sidebar-footer {
-    display: none;
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
   }
 
   .main {

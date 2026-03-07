@@ -270,6 +270,7 @@ function updateChart(price, timestamp) {
   if (!Number.isFinite(numericPrice)) {
     return;
   }
+  const baselinePrice = Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice);
 
   const bucket = Math.floor(time / 60) * 60;
   const lastCandle = currentCandles[currentCandles.length - 1];
@@ -294,9 +295,9 @@ function updateChart(price, timestamp) {
   currentStock = {
     ...currentStock,
     current_price: numericPrice,
-    change: numericPrice - Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice),
-    change_pct: Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice)
-      ? ((numericPrice - Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice)) / Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice)) * 100
+    change: numericPrice - baselinePrice,
+    change_pct: baselinePrice
+      ? ((numericPrice - baselinePrice) / baselinePrice) * 100
       : 0,
     updated_at: new Date(time * 1000).toISOString(),
   };

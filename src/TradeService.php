@@ -4,6 +4,8 @@ require_once __DIR__ . '/StockService.php';
 
 class TradeService
 {
+    private const DEFAULT_SHORT_DURATIONS = [3600, 86400, 604800];
+
     public static function buy(int $userId, int $institutionId, int $stockId, int $quantity): array
     {
         $pdo = Database::getConnection();
@@ -346,6 +348,6 @@ class TradeService
             return false;
         }
 
-        return in_array($durationSeconds, [3600, 86400, 604800], true);
+        return in_array($durationSeconds, self::DEFAULT_SHORT_DURATIONS, true);
     }
 }

@@ -240,9 +240,7 @@ function renderParticipants() {
     info.appendChild(meta);
 
     const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.gap = '0.5rem';
-    actions.style.flexWrap = 'wrap';
+    actions.classList.add('actions-row');
 
     if (!isManager) {
       const promoteButton = document.createElement('button');
