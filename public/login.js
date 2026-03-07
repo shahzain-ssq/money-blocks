@@ -78,6 +78,9 @@ function openInstitutionModal() {
   modal.setAttribute('aria-hidden', 'false');
 
   const searchInput = document.getElementById('institutionSearch');
+  if (!searchInput) {
+    return;
+  }
   searchInput.value = '';
   renderInstitutionList(institutions);
   searchInput.focus();
@@ -188,30 +191,39 @@ function renderInstitutionList(list) {
 // Modal Logic
 const modal = document.getElementById('institutionModal');
 const btn = document.getElementById('institutionLoginBtn');
-const closeButton = document.getElementsByClassName('modal-close')[0];
+const closeButton = modal?.querySelector('.modal-close');
 
-btn.onclick = function() {
-  openInstitutionModal();
+if (btn) {
+  btn.addEventListener('click', () => {
+    openInstitutionModal();
+  });
 }
 
-closeButton.onclick = function() {
-  closeInstitutionModal();
+if (closeButton) {
+  closeButton.addEventListener('click', () => {
+    closeInstitutionModal();
+  });
 }
 
-window.onclick = function(event) {
-  if (event.target == modal) {
+window.addEventListener('click', (event) => {
+  if (event.target === modal) {
     closeInstitutionModal();
   }
+});
+
+if (modal) {
+  modal.addEventListener('keydown', handleModalKeydown);
 }
 
-modal.addEventListener('keydown', handleModalKeydown);
-
 // Search Logic
-document.getElementById('institutionSearch').addEventListener('input', (e) => {
-  const term = e.target.value.toLowerCase();
-  const filtered = institutions.filter(i => i.name.toLowerCase().includes(term));
-  renderInstitutionList(filtered);
-});
+const institutionSearchInput = document.getElementById('institutionSearch');
+if (institutionSearchInput) {
+  institutionSearchInput.addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = institutions.filter(i => i.name.toLowerCase().includes(term));
+    renderInstitutionList(filtered);
+  });
+}
 
 // Login Form Logic
 async function handleLogin(e) {

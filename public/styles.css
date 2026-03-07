@@ -1,4 +1,10 @@
-@import 'https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap';
+@font-face {
+  font-family: Manrope;
+  src: url('/fonts/Manrope-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+}
 
 :root {
   --bg-main: #081224;

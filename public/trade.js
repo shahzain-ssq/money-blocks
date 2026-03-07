@@ -276,6 +276,7 @@ async function loadDurations() {
     option.selected = true;
     option.textContent = 'No durations available';
     select.appendChild(option);
+    durationsLoaded = true;
     return;
   }
 
@@ -403,7 +404,7 @@ function getTradeValidation(stock, quantity, duration) {
   };
 }
 
-function updatePreview() {
+function updatePreview(isUserAction = false) {
   const stock = getSelectedStock();
   const quantity = Number(document.getElementById('quantityInput').value);
   const duration = Number(document.getElementById('durationSelect').value || 0);
@@ -419,7 +420,9 @@ function updatePreview() {
   updateSubmitButton();
   updateInstrumentSummary(stock);
   updateHoldingsInfo(stock);
-  setInlineStatus(validation, '');
+  if (isUserAction) {
+    setInlineStatus(validation, '');
+  }
   submitButton.disabled = false;
   expiryRow.style.display = 'none';
 
@@ -443,19 +446,21 @@ function updatePreview() {
 
   if (!validationState.isValid) {
     submitButton.disabled = true;
-    setInlineStatus(validation, validationState.message, validationState.tone);
+    if (isUserAction) {
+      setInlineStatus(validation, validationState.message, validationState.tone);
+    }
   }
 }
 
-function updateUI() {
+function updateUI(isUserAction = false) {
   updateActionButtonLabels();
   updateSubmitButton();
   const durationGroup = document.getElementById('durationGroup');
   durationGroup.style.display = currentMode === 'short' && currentAction === 'open' ? 'block' : 'none';
   if (durationGroup.style.display === 'block') {
-    loadDurations().then(updatePreview).catch(handleFatalError);
+    loadDurations().then(() => updatePreview(isUserAction)).catch(handleFatalError);
   }
-  updatePreview();
+  updatePreview(isUserAction);
 }
 
 function setupEventListeners() {
@@ -469,25 +474,25 @@ function setupEventListeners() {
     tab.addEventListener('click', () => {
       currentMode = tab.dataset.mode;
       currentAction = currentMode === 'spot' ? 'buy' : 'open';
-      updateUI();
+      updateUI(true);
     });
   });
 
   document.querySelectorAll('.action-btn').forEach((button) => {
     button.addEventListener('click', () => {
       currentAction = button.dataset.action;
-      updateUI();
+      updateUI(true);
     });
   });
 
   document.getElementById('stockSearch').addEventListener('input', () => {
     populateStockSelect();
-    updatePreview();
+    updatePreview(true);
   });
 
-  document.getElementById('stockSelect').addEventListener('change', updatePreview);
-  document.getElementById('quantityInput').addEventListener('input', updatePreview);
-  document.getElementById('durationSelect').addEventListener('change', updatePreview);
+  document.getElementById('stockSelect').addEventListener('change', () => updatePreview(true));
+  document.getElementById('quantityInput').addEventListener('input', () => updatePreview(true));
+  document.getElementById('durationSelect').addEventListener('change', () => updatePreview(true));
   document.getElementById('tradeForm').addEventListener('submit', handleTrade);
 }
 
