@@ -100,4 +100,27 @@ class Auth
         }
         return null;
     }
+
+    public static function logout(): void
+    {
+        self::startSession();
+        $_SESSION = [];
+
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            $cookieOptions = [
+                'expires' => time() - 42000,
+                'path' => $params['path'] ?? '/',
+                'secure' => (bool)($params['secure'] ?? false),
+                'httponly' => (bool)($params['httponly'] ?? true),
+                'samesite' => $params['samesite'] ?? 'Lax',
+            ];
+            if (!empty($params['domain'])) {
+                $cookieOptions['domain'] = $params['domain'];
+            }
+            setcookie(session_name(), '', $cookieOptions);
+        }
+
+        session_destroy();
+    }
 }

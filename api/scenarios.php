@@ -16,6 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($scenarioId <= 0) {
             jsonError('invalid_input', 'Scenario ID is required.', 422);
         }
+        $scenario = ScenarioService::getById($scenarioId, (int)$user['institution_id']);
+        if (!$scenario) {
+            jsonError('not_found', 'Scenario not found.', 404);
+        }
         $read = filter_var($input['read'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($read === null) {
             jsonError('invalid_input', 'Read flag must be true or false.', 422);

@@ -87,9 +87,20 @@ if ($method === 'DELETE') {
     }
     try {
         $pdo->beginTransaction();
+        $userCheck = $pdo->prepare('SELECT id FROM users WHERE id = ? AND institution_id = ? FOR UPDATE');
+        $userCheck->execute([$id, $user['institution_id']]);
+        if (!$userCheck->fetch()) {
+            $pdo->rollBack();
+            jsonError('not_found', 'User not found.', 404);
+        }
+
+        $pdo->prepare('DELETE FROM scenario_reads WHERE user_id = ?')->execute([$id]);
+        $pdo->prepare('DELETE FROM sessions WHERE user_id = ?')->execute([$id]);
+
         $portfolioStmt = $pdo->prepare('SELECT id FROM portfolios WHERE user_id = ?');
         $portfolioStmt->execute([$id]);
         if ($portfolioId = $portfolioStmt->fetchColumn()) {
+            $pdo->prepare('DELETE FROM trades WHERE portfolio_id = ?')->execute([$portfolioId]);
             $pdo->prepare('DELETE FROM positions WHERE portfolio_id = ?')->execute([$portfolioId]);
             $pdo->prepare('DELETE FROM short_positions WHERE portfolio_id = ?')->execute([$portfolioId]);
             $pdo->prepare('DELETE FROM portfolios WHERE id = ?')->execute([$portfolioId]);

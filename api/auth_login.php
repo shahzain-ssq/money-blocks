@@ -4,6 +4,7 @@ require_once __DIR__ . '/../src/Helpers.php';
 require_once __DIR__ . '/../src/InstitutionService.php';
 require_once __DIR__ . '/../src/Auth.php';
 require_once __DIR__ . '/../src/RateLimiter.php';
+require_once __DIR__ . '/../src/Proxy.php';
 
 initApiRequest();
 
@@ -12,13 +13,28 @@ const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5;
 
 function getRateLimitKey(int $institutionId): string
 {
-    // Check X-Forwarded-For from trusted proxies, fallback to REMOTE_ADDR
-    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-    // If X-Forwarded-For contains multiple IPs, take the first (client IP)
-    if (strpos($ip, ',') !== false) {
-        $ip = trim(explode(',', $ip)[0]);
+    $trustedProxies = parseTrustedProxies();
+    $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip = $remoteAddr !== '' ? $remoteAddr : 'unknown';
+
+    if (isTrustedProxyAddress($remoteAddr, $trustedProxies)) {
+        $forwardedFor = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if ($forwardedFor !== '') {
+            $ip = trim(explode(',', $forwardedFor)[0]);
+        }
     }
     return $institutionId . '|' . $ip;
+}
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'POST';
+
+if ($method === 'DELETE') {
+    Auth::logout();
+    jsonResponse(['ok' => true]);
+}
+
+if ($method !== 'POST') {
+    jsonError('method_not_allowed', 'Method not allowed.', 405);
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
