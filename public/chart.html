@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,6 +10,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <script src="https://unpkg.com/lightweight-charts@5.0.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
+
 <body>
   <div class="app-shell">
     <aside class="sidebar">
@@ -17,7 +19,8 @@
         <a href="/dashboard" class="nav-link">Dashboard</a>
         <a href="/chart" class="nav-link active">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
-        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
+        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger"
+            style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
@@ -30,9 +33,12 @@
       <div class="top-bar">
         <div class="page-heading">
           <h2>Markets &amp; Charts</h2>
-          <p class="page-subtitle">Watch current pricing, monitor intraday movement, and move straight from market discovery into trading.</p>
+          <p class="page-subtitle">Watch current pricing, monitor intraday movement, and move straight from market
+            discovery into trading.</p>
         </div>
         <div class="user-info">
+          <button id="mobileNavToggle" class="btn btn-sm btn-outline mobile-only"
+            aria-label="Toggle navigation">Menu</button>
           <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
         </div>
       </div>
@@ -54,7 +60,8 @@
           <div class="chart-header">
             <div>
               <h3 id="selectedStockTitle">Select a Stock</h3>
-              <p id="selectedStockMeta" class="page-subtitle">Choose an instrument from the watchlist to load its chart.</p>
+              <p id="selectedStockMeta" class="page-subtitle">Choose an instrument from the watchlist to load its chart.
+              </p>
             </div>
             <div class="chart-summary" aria-live="polite">
               <div>
@@ -78,5 +85,7 @@
   </div>
   <script type="module" src="/chart.js"></script>
   <script type="module" src="/js/notifications.js"></script>
+  <script type="module" src="/js/ui.js"></script>
 </body>
+
 </html>

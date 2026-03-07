@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,6 +9,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
+
 <body>
   <div class="app-shell">
     <aside class="sidebar">
@@ -16,7 +18,8 @@
         <a href="/dashboard" class="nav-link">Dashboard</a>
         <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
-        <a href="/scenarios" class="nav-link active">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
+        <a href="/scenarios" class="nav-link active">Scenarios <span id="scenarios-badge" class="badge badge-danger"
+            style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
@@ -29,9 +32,12 @@
       <div class="top-bar">
         <div class="page-heading">
           <h2>Crisis Scenarios</h2>
-          <p class="page-subtitle">Read live market stories, simulation events, and manager-published scenarios that can affect trading decisions.</p>
+          <p class="page-subtitle">Read live market stories, simulation events, and manager-published scenarios that can
+            affect trading decisions.</p>
         </div>
         <div class="user-info">
+          <button id="mobileNavToggle" class="btn btn-sm btn-outline mobile-only"
+            aria-label="Toggle navigation">Menu</button>
           <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
         </div>
       </div>
@@ -57,5 +63,7 @@
   </div>
   <script type="module" src="/scenarios.js"></script>
   <script type="module" src="/js/notifications.js"></script>
+  <script type="module" src="/js/ui.js"></script>
 </body>
+
 </html>

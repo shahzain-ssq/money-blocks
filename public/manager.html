@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,6 +9,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
+
 <body>
   <div class="app-shell">
     <aside class="sidebar">
@@ -16,7 +18,8 @@
         <a href="/dashboard" class="nav-link">Dashboard</a>
         <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
-        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
+        <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger"
+            style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link active" id="managerLink">Admin</a>
       </nav>
@@ -29,9 +32,12 @@
       <div class="top-bar">
         <div class="page-heading">
           <h2>Admin Panel</h2>
-          <p class="page-subtitle">Manage participants, stock listings, short-duration options, and simulation scenarios for your institution.</p>
+          <p class="page-subtitle">Manage participants, stock listings, short-duration options, and simulation scenarios
+            for your institution.</p>
         </div>
         <div class="user-info">
+          <button id="mobileNavToggle" class="btn btn-sm btn-outline mobile-only"
+            aria-label="Toggle navigation">Menu</button>
           <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
         </div>
       </div>
@@ -49,7 +55,8 @@
           <div class="form-row">
             <label class="sr-only" for="participantSearch">Search participants</label>
             <input type="text" id="participantSearch" class="input" placeholder="Search participants" />
-            <button class="btn" type="button" id="addParticipantBtn" aria-label="Add participant">Add participant</button>
+            <button class="btn" type="button" id="addParticipantBtn" aria-label="Add participant">Add
+              participant</button>
           </div>
           <div id="participantsList" class="scrollable-list"></div>
         </section>
@@ -102,8 +109,10 @@
         <h3>Add Participant</h3>
         <div id="participantFormError" class="alert alert-error" style="display:none;"></div>
         <form id="addParticipantForm">
-          <div class="form-group"><label for="participantUsername">Username</label><input class="input" id="participantUsername" name="username" required></div>
-          <div class="form-group"><label for="participantEmail">Email</label><input class="input" id="participantEmail" name="email" type="email"></div>
+          <div class="form-group"><label for="participantUsername">Username</label><input class="input"
+              id="participantUsername" name="username" required></div>
+          <div class="form-group"><label for="participantEmail">Email</label><input class="input" id="participantEmail"
+              name="email" type="email"></div>
           <button class="btn btn-primary full-width" type="submit">Create</button>
         </form>
       </div>
@@ -116,8 +125,10 @@
         <div id="scenarioFormError" class="alert alert-error" style="display:none;"></div>
         <form id="scenarioForm">
           <input type="hidden" name="id" id="scenarioId">
-          <div class="form-group"><label for="scenarioTitle">Title</label><input class="input" name="title" id="scenarioTitle" required></div>
-          <div class="form-group"><label for="scenarioDesc">Description</label><textarea class="input" name="description" id="scenarioDesc" rows="4"></textarea></div>
+          <div class="form-group"><label for="scenarioTitle">Title</label><input class="input" name="title"
+              id="scenarioTitle" required></div>
+          <div class="form-group"><label for="scenarioDesc">Description</label><textarea class="input"
+              name="description" id="scenarioDesc" rows="4"></textarea></div>
           <div class="form-group">
             <label for="scenarioStatus">Status</label>
             <select class="input" name="status" id="scenarioStatus">
@@ -142,13 +153,21 @@
         <h3>Add Stock</h3>
         <div id="stockFormError" class="alert alert-error" style="display:none;"></div>
         <form id="addStockForm">
-          <div class="form-group"><label for="stockTicker">Ticker</label><input class="input" id="stockTicker" name="ticker" required></div>
-          <div class="form-group"><label for="stockName">Name</label><input class="input" id="stockName" name="name" required></div>
-          <div class="form-group" data-field="initial-price"><label for="stockInitialPrice">Initial Price</label><input class="input" id="stockInitialPrice" name="initial_price" type="number" step="0.01" required></div>
-          <div class="form-group" data-field="current-price" style="display:none;"><label for="stockCurrentPrice">Current Price</label><input class="input" id="stockCurrentPrice" name="price" type="number" step="0.01"></div>
-          <div class="form-group"><label for="stockTotalLimit">Total Limit</label><input class="input" id="stockTotalLimit" name="total_limit" type="number"></div>
-          <div class="form-group"><label for="stockPerUserLimit">Per-User Long Limit</label><input class="input" id="stockPerUserLimit" name="per_user_limit" type="number"></div>
-          <div class="form-group"><label for="stockPerUserShortLimit">Per-User Short Limit</label><input class="input" id="stockPerUserShortLimit" name="per_user_short_limit" type="number"></div>
+          <div class="form-group"><label for="stockTicker">Ticker</label><input class="input" id="stockTicker"
+              name="ticker" required></div>
+          <div class="form-group"><label for="stockName">Name</label><input class="input" id="stockName" name="name"
+              required></div>
+          <div class="form-group" data-field="initial-price"><label for="stockInitialPrice">Initial Price</label><input
+              class="input" id="stockInitialPrice" name="initial_price" type="number" step="0.01" required></div>
+          <div class="form-group" data-field="current-price" style="display:none;"><label
+              for="stockCurrentPrice">Current Price</label><input class="input" id="stockCurrentPrice" name="price"
+              type="number" step="0.01"></div>
+          <div class="form-group"><label for="stockTotalLimit">Total Limit</label><input class="input"
+              id="stockTotalLimit" name="total_limit" type="number"></div>
+          <div class="form-group"><label for="stockPerUserLimit">Per-User Long Limit</label><input class="input"
+              id="stockPerUserLimit" name="per_user_limit" type="number"></div>
+          <div class="form-group"><label for="stockPerUserShortLimit">Per-User Short Limit</label><input class="input"
+              id="stockPerUserShortLimit" name="per_user_short_limit" type="number"></div>
           <button class="btn btn-primary full-width" type="submit">Save Stock</button>
         </form>
       </div>
@@ -156,5 +175,7 @@
   </div>
   <script type="module" src="/manager.js"></script>
   <script type="module" src="/js/notifications.js"></script>
+  <script type="module" src="/js/ui.js"></script>
 </body>
+
 </html>

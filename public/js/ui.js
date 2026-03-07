@@ -145,9 +145,33 @@ export async function requireUser({ managerOnly = false } = {}) {
   }
 
   bindLogoutButton();
+  bindMobileNav();
   setManagerLink(user);
 
   return user;
+}
+
+export function bindMobileNav() {
+  const toggleBtn = document.getElementById('mobileNavToggle');
+  const sidebar = document.querySelector('.sidebar');
+  if (!toggleBtn || !sidebar || toggleBtn.dataset.bound === 'true') {
+    return;
+  }
+
+  toggleBtn.dataset.bound = 'true';
+  toggleBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('is-open');
+  });
+
+  // Close drawer if clicking outside of the sidebar on mobile
+  document.addEventListener('click', (event) => {
+    if (window.innerWidth <= 768 && 
+        sidebar.classList.contains('is-open') && 
+        !sidebar.contains(event.target) && 
+        !toggleBtn.contains(event.target)) {
+      sidebar.classList.remove('is-open');
+    }
+  });
 }
 
 export function renderMetricCards(container, items) {
