@@ -1,431 +1,606 @@
 import { WebSocketManager } from './js/ws-manager.js';
 import { fetchJson, getErrorMessage } from './js/api.js';
+import {
+  escapeHtml,
+  formatCurrency,
+  formatDateTime,
+  formatPercent,
+  formatQuantity,
+  requireUser,
+  setInlineStatus,
+  updateWsStatus,
+} from './js/ui.js';
 
-let currentMode = 'spot'; // 'spot' or 'short'
-let currentAction = 'buy'; // 'buy', 'sell' (for spot), 'open', 'close' (for short)
-
+let currentMode = 'spot';
+let currentAction = 'buy';
 let stocks = [];
+let filteredStocks = [];
 let portfolio = null;
 let positions = [];
 let shorts = [];
-
-async function init() {
-    try {
-        clearTradeError();
-        // Load config and auth
-        const config = await fetchJson('/api/config.php');
-        const me = await fetchJson('/api/auth_me.php');
-
-        // WS
-        if (config.wsPublicUrl && me.user) {
-            WebSocketManager.getInstance(me.user.institution_id, config.wsPublicUrl).onStatusChange(status => {
-                const el = document.getElementById('ws-status');
-                if (el) {
-                    el.textContent = status === 'connected' ? '● Live' : '○ Offline';
-                    el.className = status === 'connected' ? 'status-live' : 'status-offline';
-                }
-            });
-        }
-
-        // Load Data
-        await loadData();
-        setupEventListeners();
-        updateUI();
-    } catch (e) {
-        console.error('Trade initialization failed', e);
-        if (redirectIfUnauthorized(e)) return;
-        setTradeError(getErrorMessage(e, 'Failed to initialize trade screen.'));
-    }
-}
+let listenersBound = false;
+let durationsLoaded = false;
+let configPromise;
+let debounceTimer;
+let queryApplied = false;
+let lastRefreshTime = 0;
+let refreshRunning = false;
+let queuedRefresh = false;
+const REFRESH_THROTTLE_MS = 250;
 
 function setTradeError(message) {
-    const el = document.getElementById('tradeError');
-    if (!el) return;
-    el.textContent = message;
-    el.style.display = 'block';
+  const el = document.getElementById('tradeError');
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  el.style.display = message ? 'block' : 'none';
 }
 
 function clearTradeError() {
-    const el = document.getElementById('tradeError');
-    if (!el) return;
-    el.textContent = '';
-    el.style.display = 'none';
+  setTradeError('');
 }
 
-function redirectIfUnauthorized(err) {
-    if (err?.status === 401 || err?.code === 'unauthorized') {
-        window.location = '/';
-        return true;
-    }
-    return false;
+function getSelectedStock() {
+  const stockId = Number(document.getElementById('stockSelect').value);
+  return stocks.find((stock) => Number(stock.id) === stockId) || null;
 }
 
-async function loadData() {
-    try {
-        clearTradeError();
-        const [stocksData, portfolioData] = await Promise.all([
-            fetchJson('/api/stocks.php'),
-            fetchJson('/api/portfolio.php')
-        ]);
+function debounceRefresh() {
+  const now = Date.now();
+  const elapsed = now - lastRefreshTime;
 
-        stocks = stocksData.stocks || [];
-        portfolio = portfolioData.portfolio;
-        positions = portfolioData.positions || [];
-        shorts = portfolioData.shorts || [];
+  if (refreshRunning) {
+    queuedRefresh = true;
+    return;
+  }
 
-        // Populate Stock Select
-        const select = document.getElementById('stockSelect');
-        // Save current selection if exists
-        const currentSelection = select.value;
-        select.innerHTML = '';
+  if (elapsed >= REFRESH_THROTTLE_MS) {
+    runRefresh();
+    return;
+  }
 
-        if (stocks.length === 0) {
-            select.innerHTML = '<option disabled>No stocks available</option>';
-        } else {
-            stocks.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.id;
-                opt.textContent = `${s.ticker} - ${s.name}`;
-                opt.dataset.price = s.current_price || s.initial_price;
-                opt.dataset.ticker = s.ticker;
-                select.appendChild(opt);
-            });
-        }
+  if (debounceTimer) {
+    return;
+  }
 
-        // Restore selection or default
-        if (currentSelection && stocks.find(s => s.id == currentSelection)) {
-            select.value = currentSelection;
-        }
-
-        if (portfolio) {
-            document.getElementById('cashDisplay').textContent = `Cash: €${parseFloat(portfolio.cash_balance).toLocaleString()}`;
-        }
-
-        // Handle Query Params (Pre-select)
-        const urlParams = new URLSearchParams(window.location.search);
-        const tickerParam = urlParams.get('ticker');
-        const actionParam = urlParams.get('action'); // buy, sell
-
-        if (tickerParam) {
-            const stock = stocks.find(s => s.ticker === tickerParam);
-            if (stock) {
-                select.value = stock.id;
-            }
-        }
-
-        if (actionParam && ['buy', 'sell'].includes(actionParam.toLowerCase())) {
-             currentAction = actionParam.toLowerCase();
-             // Determine mode
-             // If short action is passed? usually buy/sell are spot.
-             updateActionButtons('buy', 'sell'); // default spot
-             document.querySelectorAll('.action-btn').forEach(b => {
-                 if (b.dataset.action === currentAction) b.classList.add('active');
-                 else b.classList.remove('active');
-             });
-        }
-
-        updatePreview();
-
-    } catch (e) {
-        console.error("Failed to load data", e);
-        if (redirectIfUnauthorized(e)) return;
-        setTradeError(getErrorMessage(e, 'Failed to load trading data. Please refresh.'));
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    if (refreshRunning) {
+      queuedRefresh = true;
+      return;
     }
+    runRefresh();
+  }, Math.max(REFRESH_THROTTLE_MS - elapsed, 0));
+}
+
+async function runRefresh() {
+  refreshRunning = true;
+  lastRefreshTime = Date.now();
+  try {
+    await loadData();
+    updateUI();
+  } catch (error) {
+    handleFatalError(error);
+  } finally {
+    refreshRunning = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      debounceRefresh();
+    }
+  }
+}
+
+function handleFatalError(error) {
+  console.error('Trade screen failed', error);
+  setTradeError(getErrorMessage(error, 'Failed to load trading data.'));
+}
+
+async function loadConfig() {
+  if (!configPromise) {
+    configPromise = fetchJson('/api/config.php');
+  }
+  return configPromise;
+}
+
+function setSelectedInstrument(stock) {
+  const title = document.getElementById('selectedInstrument');
+  const price = document.getElementById('previewPrice');
+  const total = document.getElementById('previewTotal');
+  const balance = document.getElementById('previewBalance');
+  const position = document.getElementById('previewPosition');
+  const expiry = document.getElementById('previewExpiry');
+
+  if (!stock) {
+    title.innerHTML = `
+      <strong>Select an instrument</strong>
+      <span class="subtext">Pricing and validation details appear here once an instrument is selected.</span>
+    `;
+    price.textContent = '-';
+    total.textContent = '-';
+    balance.textContent = '-';
+    position.textContent = '-';
+    expiry.textContent = '-';
+  }
+}
+
+function updateActionButtonLabels() {
+  const buyButton = document.getElementById('btnBuy');
+  const sellButton = document.getElementById('btnSell');
+
+  if (currentMode === 'spot') {
+    buyButton.textContent = 'Buy';
+    buyButton.dataset.action = 'buy';
+    sellButton.textContent = 'Sell';
+    sellButton.dataset.action = 'sell';
+    buyButton.className = `action-btn ${currentAction === 'buy' ? 'active buy' : ''}`.trim();
+    sellButton.className = `action-btn ${currentAction === 'sell' ? 'active sell' : ''}`.trim();
+  } else {
+    buyButton.textContent = 'Open Short';
+    buyButton.dataset.action = 'open';
+    sellButton.textContent = 'Close Short';
+    sellButton.dataset.action = 'close';
+    buyButton.className = `action-btn ${currentAction === 'open' ? 'active buy' : ''}`.trim();
+    sellButton.className = `action-btn ${currentAction === 'close' ? 'active sell' : ''}`.trim();
+  }
+
+  document.querySelectorAll('.trade-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.mode === currentMode);
+  });
+}
+
+function populateStockSelect() {
+  const select = document.getElementById('stockSelect');
+  const currentSelection = select.value;
+  const search = document.getElementById('stockSearch').value.trim().toLowerCase();
+
+  filteredStocks = !search
+    ? [...stocks]
+    : stocks.filter((stock) => `${stock.ticker} ${stock.name}`.toLowerCase().includes(search));
+
+  select.innerHTML = '';
+
+  if (!filteredStocks.length) {
+    const option = document.createElement('option');
+    option.disabled = true;
+    option.selected = true;
+    option.textContent = 'No matching instruments';
+    select.appendChild(option);
+    return;
+  }
+
+  filteredStocks.forEach((stock) => {
+    const option = document.createElement('option');
+    option.value = String(stock.id);
+    option.textContent = `${stock.ticker} - ${stock.name}`;
+    select.appendChild(option);
+  });
+
+  if (currentSelection && filteredStocks.some((stock) => String(stock.id) === currentSelection)) {
+    select.value = currentSelection;
+    return;
+  }
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const tickerParam = urlParams.get('ticker');
+  if (tickerParam) {
+    const fromQuery = filteredStocks.find((stock) => stock.ticker === tickerParam);
+    if (fromQuery) {
+      select.value = String(fromQuery.id);
+      return;
+    }
+  }
+
+  select.selectedIndex = 0;
+}
+
+function applyQueryParams() {
+  if (queryApplied) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const action = (params.get('action') || '').toLowerCase();
+  if (action === 'sell') {
+    currentMode = 'spot';
+    currentAction = 'sell';
+  } else if (action === 'buy') {
+    currentMode = 'spot';
+    currentAction = 'buy';
+  }
+
+  queryApplied = true;
+}
+
+function getOwnedQuantity(stockId) {
+  const position = positions.find((item) => Number(item.stock_id) === Number(stockId));
+  return position ? Number(position.quantity || 0) : 0;
+}
+
+function getOpenShorts(stockId) {
+  return shorts
+    .filter((item) => Number(item.stock_id) === Number(stockId) && Number(item.closed || 0) === 0)
+    .sort((left, right) => {
+      const leftExpiry = left.expires_at ? new Date(`${left.expires_at}Z`).getTime() : 0;
+      const rightExpiry = right.expires_at ? new Date(`${right.expires_at}Z`).getTime() : 0;
+      return leftExpiry - rightExpiry;
+    });
+}
+
+function getOpenShortQuantity(stockId) {
+  return getOpenShorts(stockId).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+}
+
+function getInstitutionTotalQuantity(stockId) {
+  const stock = stocks.find((item) => Number(item.id) === Number(stockId));
+  return Number(stock?.institution_total_quantity ?? 0);
+}
+
+function estimateShortCloseProfit(stockId, quantity, currentPrice) {
+  let remaining = quantity;
+  let profit = 0;
+  for (const position of getOpenShorts(stockId)) {
+    if (remaining <= 0) {
+      break;
+    }
+    const closable = Math.min(remaining, Number(position.quantity || 0));
+    profit += (Number(position.open_price || 0) - currentPrice) * closable;
+    remaining -= closable;
+  }
+  return { remaining, profit };
+}
+
+function updateSubmitButton() {
+  const button = document.getElementById('submitBtn');
+  const labels = {
+    buy: 'Buy Stock',
+    sell: 'Sell Position',
+    open: 'Open Short',
+    close: 'Close Short',
+  };
+  button.textContent = labels[currentAction] || 'Submit Trade';
+}
+
+async function loadDurations() {
+  if (durationsLoaded) {
+    return;
+  }
+
+  const data = await fetchJson('/api/config_options.php');
+  const select = document.getElementById('durationSelect');
+  select.innerHTML = '';
+
+  if (!(data.durations || []).length) {
+    const option = document.createElement('option');
+    option.disabled = true;
+    option.selected = true;
+    option.textContent = 'No durations available';
+    select.appendChild(option);
+    durationsLoaded = true;
+    return;
+  }
+
+  data.durations.forEach((duration) => {
+    const option = document.createElement('option');
+    option.value = String(duration.duration_seconds);
+    option.textContent = duration.label;
+    select.appendChild(option);
+  });
+
+  durationsLoaded = true;
+}
+
+function updateInstrumentSummary(stock) {
+  const wrapper = document.getElementById('selectedInstrument');
+  if (!stock) {
+    setSelectedInstrument(null);
+    return;
+  }
+
+  const owned = getOwnedQuantity(stock.id);
+  const shortQty = getOpenShortQuantity(stock.id);
+  wrapper.innerHTML = `
+    <strong>${escapeHtml(stock.ticker)} - ${escapeHtml(stock.name)}</strong>
+    <span class="subtext">${formatCurrency(stock.current_price ?? stock.initial_price)} current price - ${formatPercent(stock.change_pct || 0)} move</span>
+    <span class="subtext">Owned ${formatQuantity(owned)} - Open short ${formatQuantity(shortQty)}</span>
+  `;
+}
+
+function updateHoldingsInfo(stock) {
+  const info = document.getElementById('holdingsInfo');
+  if (!stock) {
+    info.textContent = '';
+    return;
+  }
+
+  const owned = getOwnedQuantity(stock.id);
+  const openShort = getOpenShortQuantity(stock.id);
+
+  if (currentMode === 'spot') {
+    const limitText = stock.per_user_limit ? ` / limit ${formatQuantity(stock.per_user_limit)}` : '';
+    info.textContent = `Owned ${formatQuantity(owned)}${limitText}`;
+  } else {
+    const shortLimitText = stock.per_user_short_limit ? ` / limit ${formatQuantity(stock.per_user_short_limit)}` : '';
+    info.textContent = `Open shorts ${formatQuantity(openShort)}${shortLimitText}`;
+  }
+}
+
+function getTradeValidation(stock, quantity, duration) {
+  if (!stock || !portfolio) {
+    return {
+      isValid: false,
+      message: '',
+      tone: 'negative',
+      projectedCash: 0,
+      currentPositionLabel: '-',
+      expiryText: '-',
+      showExpiry: false,
+      currentPrice: 0,
+      total: 0,
+    };
+  }
+
+  const currentPrice = Number(stock.current_price ?? stock.initial_price ?? 0);
+  const total = currentPrice * quantity;
+  const currentCash = Number(portfolio.cash_balance || 0);
+  let projectedCash = currentCash;
+  let currentPositionLabel = currentMode === 'spot'
+    ? `${formatQuantity(getOwnedQuantity(stock.id))} shares owned`
+    : `${formatQuantity(getOpenShortQuantity(stock.id))} shares short`;
+  let message = '';
+  let tone = 'negative';
+  let expiryText = '-';
+  let showExpiry = false;
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    message = 'Enter a valid quantity greater than zero.';
+  } else if (currentMode === 'spot' && currentAction === 'buy') {
+    projectedCash = currentCash - total;
+    const owned = getOwnedQuantity(stock.id);
+    const institutionTotal = getInstitutionTotalQuantity(stock.id);
+    if (projectedCash < 0) {
+      message = `Insufficient cash. You need ${formatCurrency(total - currentCash)} more to place this order.`;
+    } else if (stock.per_user_limit && owned + quantity > Number(stock.per_user_limit)) {
+      message = `This order exceeds your per-user limit of ${formatQuantity(stock.per_user_limit)} shares.`;
+    } else if (stock.total_limit && institutionTotal + quantity > Number(stock.total_limit)) {
+      message = 'This order exceeds the institution-wide stock limit.';
+    }
+  } else if (currentMode === 'spot' && currentAction === 'sell') {
+    const owned = getOwnedQuantity(stock.id);
+    projectedCash = currentCash + total;
+    if (quantity > owned) {
+      message = `Insufficient holdings. You currently own ${formatQuantity(owned)} shares.`;
+    }
+  } else if (currentMode === 'short' && currentAction === 'open') {
+    const openShortQuantity = getOpenShortQuantity(stock.id);
+    currentPositionLabel = `${formatQuantity(openShortQuantity)} shares currently short`;
+    if (!duration) {
+      message = 'Select a valid short duration.';
+    } else if (stock.per_user_short_limit && openShortQuantity + quantity > Number(stock.per_user_short_limit)) {
+      message = `This order exceeds your short limit of ${formatQuantity(stock.per_user_short_limit)} shares.`;
+    } else {
+      showExpiry = true;
+      expiryText = formatDateTime(new Date(Date.now() + duration * 1000));
+    }
+  } else if (currentMode === 'short' && currentAction === 'close') {
+    const { remaining, profit } = estimateShortCloseProfit(stock.id, quantity, currentPrice);
+    if (remaining > 0) {
+      message = `Cannot close more than your current short position of ${formatQuantity(quantity - remaining)} shares.`;
+    } else {
+      projectedCash = currentCash + profit;
+    }
+  }
+
+  return {
+    isValid: message === '',
+    message,
+    tone,
+    projectedCash,
+    currentPositionLabel,
+    expiryText,
+    showExpiry,
+    currentPrice,
+    total,
+  };
+}
+
+function updatePreview(isUserAction = false) {
+  const stock = getSelectedStock();
+  const quantity = Number(document.getElementById('quantityInput').value);
+  const duration = Number(document.getElementById('durationSelect').value || 0);
+  const validation = document.getElementById('validationMsg');
+  const expiryRow = document.getElementById('expiryRow');
+  const previewPrice = document.getElementById('previewPrice');
+  const previewTotal = document.getElementById('previewTotal');
+  const previewBalance = document.getElementById('previewBalance');
+  const previewPosition = document.getElementById('previewPosition');
+  const previewExpiry = document.getElementById('previewExpiry');
+  const submitButton = document.getElementById('submitBtn');
+
+  updateSubmitButton();
+  updateInstrumentSummary(stock);
+  updateHoldingsInfo(stock);
+  if (isUserAction) {
+    setInlineStatus(validation, '');
+  }
+  submitButton.disabled = false;
+  expiryRow.style.display = 'none';
+
+  if (!stock || !portfolio) {
+    setSelectedInstrument(null);
+    submitButton.disabled = true;
+    return;
+  }
+
+  const validationState = getTradeValidation(stock, quantity, duration);
+
+  previewPrice.textContent = formatCurrency(validationState.currentPrice);
+  previewTotal.textContent = formatCurrency(validationState.total);
+  previewBalance.textContent = formatCurrency(validationState.projectedCash);
+  previewPosition.textContent = validationState.currentPositionLabel;
+
+  if (validationState.showExpiry) {
+    expiryRow.style.display = 'flex';
+    previewExpiry.textContent = validationState.expiryText;
+  }
+
+  if (!validationState.isValid) {
+    submitButton.disabled = true;
+    if (isUserAction) {
+      setInlineStatus(validation, validationState.message, validationState.tone);
+    }
+  }
+}
+
+function updateUI(isUserAction = false) {
+  updateActionButtonLabels();
+  updateSubmitButton();
+  const durationGroup = document.getElementById('durationGroup');
+  durationGroup.style.display = currentMode === 'short' && currentAction === 'open' ? 'block' : 'none';
+  if (durationGroup.style.display === 'block') {
+    loadDurations().then(() => updatePreview(isUserAction)).catch(handleFatalError);
+  }
+  updatePreview(isUserAction);
 }
 
 function setupEventListeners() {
-    // Mode Tabs
-    document.querySelectorAll('.trade-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.trade-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentMode = tab.dataset.mode;
+  if (listenersBound) {
+    return;
+  }
 
-            // Reset Action Buttons based on mode
-            if (currentMode === 'spot') {
-                updateActionButtons('buy', 'sell');
-                currentAction = 'buy';
-            } else {
-                updateActionButtons('open', 'close'); // Open Short, Close Short
-                currentAction = 'open';
-            }
-            updateUI();
-        });
+  listenersBound = true;
+
+  document.querySelectorAll('.trade-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      currentMode = tab.dataset.mode;
+      currentAction = currentMode === 'spot' ? 'buy' : 'open';
+      updateUI(true);
+    });
+  });
+
+  document.querySelectorAll('.action-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      currentAction = button.dataset.action;
+      updateUI(true);
+    });
+  });
+
+  document.getElementById('stockSearch').addEventListener('input', () => {
+    populateStockSelect();
+    updatePreview(true);
+  });
+
+  document.getElementById('stockSelect').addEventListener('change', () => updatePreview(true));
+  document.getElementById('quantityInput').addEventListener('input', () => updatePreview(true));
+  document.getElementById('durationSelect').addEventListener('change', () => updatePreview(true));
+  document.getElementById('tradeForm').addEventListener('submit', handleTrade);
+}
+
+async function loadData() {
+  clearTradeError();
+
+  const [stocksData, portfolioData] = await Promise.all([
+    fetchJson('/api/stocks.php'),
+    fetchJson('/api/portfolio.php'),
+  ]);
+
+  stocks = stocksData.stocks || [];
+  portfolio = portfolioData.portfolio || {};
+  positions = portfolioData.positions || [];
+  shorts = portfolioData.shorts || [];
+
+  document.getElementById('cashDisplay').textContent = formatCurrency(portfolio.cash_balance);
+  populateStockSelect();
+  applyQueryParams();
+}
+
+async function handleTrade(event) {
+  event.preventDefault();
+
+  const stock = getSelectedStock();
+  const quantity = Number(document.getElementById('quantityInput').value);
+  const duration = Number(document.getElementById('durationSelect').value);
+  const button = document.getElementById('submitBtn');
+  const validation = document.getElementById('validationMsg');
+
+  if (!stock || !portfolio) {
+    setInlineStatus(validation, 'Choose an instrument and enter a valid quantity.', 'negative');
+    return;
+  }
+
+  const validationState = getTradeValidation(stock, quantity, duration);
+  if (!validationState.isValid) {
+    setInlineStatus(validation, validationState.message || 'Choose an instrument and enter a valid quantity.', validationState.tone);
+    return;
+  }
+
+  const payload = {
+    stock_id: stock.id,
+    quantity,
+  };
+
+  let endpoint = '';
+  if (currentMode === 'spot') {
+    endpoint = currentAction === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
+  } else if (currentAction === 'open') {
+    endpoint = '/api/trades_short_open.php';
+    payload.duration_seconds = duration;
+  } else {
+    endpoint = '/api/trades_short_close.php';
+  }
+
+  button.disabled = true;
+  button.textContent = 'Submitting...';
+
+  try {
+    await fetchJson(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    // Action Buttons
-    document.querySelectorAll('.action-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            document.querySelectorAll('.action-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentAction = btn.dataset.action;
-            updateUI();
-        });
-    });
-
-    // Inputs
-    document.getElementById('stockSelect').addEventListener('change', updatePreview);
-    document.getElementById('quantityInput').addEventListener('input', updatePreview);
-    document.getElementById('durationSelect').addEventListener('change', updatePreview);
-
-    // Form Submit
-    document.getElementById('tradeForm').addEventListener('submit', handleTrade);
+    setInlineStatus(validation, 'Order submitted successfully.', 'positive');
+    await loadData();
+    document.getElementById('quantityInput').value = '1';
+    updateUI();
+  } catch (error) {
+    console.error('Trade submission failed', error);
+    setInlineStatus(validation, getErrorMessage(error, 'Trade failed. Please try again.'), 'negative');
+  } finally {
+    button.disabled = false;
+    updateSubmitButton();
+  }
 }
 
-function updateActionButtons(label1, label2) {
-    const btn1 = document.getElementById('btnBuy');
-    const btn2 = document.getElementById('btnSell');
+async function init() {
+  try {
+    clearTradeError();
+    updateWsStatus('ws-status', 'disconnected');
 
-    btn1.textContent = label1 === 'open' ? 'Open Short' : 'Buy';
-    btn1.dataset.action = label1;
-    btn2.textContent = label2 === 'close' ? 'Close Short' : 'Sell';
-    btn2.dataset.action = label2;
-
-    // Reset active state
-    btn1.classList.add('active');
-    btn2.classList.remove('active');
-
-    // Update classes for color
-    btn1.className = `action-btn active ${label1 === 'buy' || label1 === 'open' ? 'buy' : ''}`;
-    btn2.className = `action-btn ${label2 === 'sell' || label2 === 'close' ? 'sell' : ''}`;
-}
-
-function updateUI() {
-    const durationGroup = document.getElementById('durationGroup');
-    if (currentMode === 'short' && currentAction === 'open') {
-        durationGroup.style.display = 'block';
-        loadDurations();
-    } else {
-        durationGroup.style.display = 'none';
+    const [config, user] = await Promise.all([
+      loadConfig(),
+      requireUser(),
+    ]);
+    if (!user) {
+      return;
     }
-    updatePreview();
-}
 
-let durationsLoaded = false;
-async function loadDurations() {
-    if (durationsLoaded) return;
-    try {
-        const data = await fetchJson('/api/config_options.php');
-        const select = document.getElementById('durationSelect');
-        select.innerHTML = '';
-        if (data.durations && data.durations.length > 0) {
-            data.durations.forEach(d => {
-                const opt = document.createElement('option');
-                opt.value = d.duration_seconds;
-                opt.textContent = d.label;
-                select.appendChild(opt);
-            });
-            // Select first one by default
-            select.selectedIndex = 0;
-        } else {
-             select.innerHTML = '<option value="" disabled>No durations available</option>';
+    await loadData();
+    setupEventListeners();
+    updateUI();
+
+    if (config.wsPublicUrl) {
+      const wsManager = WebSocketManager.getInstance(user.institution_id, config.wsPublicUrl);
+      wsManager.onStatusChange((status) => updateWsStatus('ws-status', status));
+      wsManager.subscribe((message) => {
+        if (message.type === 'price_update') {
+          debounceRefresh();
         }
-        durationsLoaded = true;
-        updatePreview();
-    } catch (e) {
-        console.error('Failed to load durations', e);
-        if (redirectIfUnauthorized(e)) return;
-        setTradeError(getErrorMessage(e, 'Failed to load short durations.'));
+      });
     }
-}
-
-function updatePreview() {
-    const stockId = document.getElementById('stockSelect').value;
-    const qtyInput = document.getElementById('quantityInput');
-    const qty = parseFloat(qtyInput.value); // Allow float? Usually stocks are ints. But JS handles numbers.
-    // Ensure numeric
-    if (isNaN(qty) || qty < 0) {
-         // Maybe just show invalid?
-    }
-
-    const stock = stocks.find(s => s.id == stockId);
-    const submitBtn = document.getElementById('submitBtn');
-    const msg = document.getElementById('validationMsg') || createValidationMsg();
-    msg.textContent = '';
-    submitBtn.disabled = false;
-
-    if (!stock) return;
-
-    const price = parseFloat(stock.current_price || stock.initial_price);
-    const total = price * qty;
-
-    // Display Holdings Info
-    displayHoldingsInfo(stockId);
-
-    document.getElementById('previewPrice').textContent = `€${price.toFixed(2)}`;
-    document.getElementById('previewTotal').textContent = `€${(total || 0).toFixed(2)}`;
-
-    // Balance Projection & Validation
-    if (!portfolio) return;
-
-    const currentCash = parseFloat(portfolio.cash_balance);
-    let newBalance = currentCash;
-    let isValid = true;
-    let errorText = '';
-
-    if (qty <= 0 || isNaN(qty)) {
-        isValid = false;
-        errorText = "Enter a valid quantity.";
-    }
-
-    if (currentMode === 'spot') {
-        if (currentAction === 'buy') {
-             newBalance -= total;
-             if (newBalance < 0) {
-                 isValid = false;
-                 errorText = `Insufficient funds. You need €${(total - currentCash).toFixed(2)} more.`;
-             }
-        } else {
-             // Sell validation
-             newBalance += total;
-             const pos = positions.find(p => p.stock_id == stockId);
-             const owned = pos ? parseInt(pos.quantity) : 0;
-             if (qty > owned) {
-                 isValid = false;
-                 errorText = `Insufficient holdings. You own ${owned}.`;
-             }
-        }
-    } else if (currentMode === 'short') {
-        if (currentAction === 'open') {
-             // Validate limits if any
-             const shortLimit = parseInt(stock.per_user_short_limit);
-             // We need to count ACTIVE shorts for this stock?
-             // Or is the limit global per user per stock?
-             // The API check is `StockService` or `TradeService`.
-             // Assuming limit check happens on backend, but we can hint.
-             // Also min quantity check?
-        } else {
-             // Close Short
-             // Find active short positions
-             // Logic: We might have multiple short positions for same stock with different expiries.
-             // We sum them up for validation?
-             const stockShorts = shorts.filter(s => s.stock_id == stockId && s.closed == 0);
-             const totalShortQty = stockShorts.reduce((sum, s) => sum + parseInt(s.quantity), 0);
-
-             if (qty > totalShortQty) {
-                 isValid = false;
-                 errorText = `Cannot close more than open short position (${totalShortQty}).`;
-             }
-        }
-    }
-
-    document.getElementById('previewBalance').textContent = `€${newBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-
-    if (!isValid) {
-        submitBtn.disabled = true;
-        msg.textContent = errorText;
-        msg.style.color = 'var(--danger-color)';
-    } else {
-        msg.textContent = '';
-    }
-
-    // Expiry
-    const expiryRow = document.getElementById('expiryRow');
-    if (currentMode === 'short' && currentAction === 'open') {
-        expiryRow.style.display = 'flex';
-        const duration = parseInt(document.getElementById('durationSelect').value) || 0;
-        if (duration > 0) {
-            const expiresAt = new Date(Date.now() + duration * 1000);
-            document.getElementById('previewExpiry').textContent = expiresAt.toLocaleString();
-        } else {
-            document.getElementById('previewExpiry').textContent = '-';
-        }
-    } else {
-        expiryRow.style.display = 'none';
-    }
-}
-
-function displayHoldingsInfo(stockId) {
-    // Add or update an element under the Stock Select
-    let infoEl = document.getElementById('holdingsInfo');
-    if (!infoEl) {
-        infoEl = document.createElement('div');
-        infoEl.id = 'holdingsInfo';
-        infoEl.style.fontSize = '0.85rem';
-        infoEl.style.marginTop = '0.5rem';
-        infoEl.style.color = 'var(--text-muted)';
-        document.getElementById('stockSelect').parentNode.appendChild(infoEl);
-    }
-
-    if (currentMode === 'spot') {
-        const pos = positions.find(p => p.stock_id == stockId);
-        const owned = pos ? pos.quantity : 0;
-        infoEl.textContent = `Owned: ${owned}`;
-        infoEl.style.color = owned > 0 ? 'var(--success-color)' : 'var(--text-muted)';
-    } else {
-        // Show Short info
-        const stockShorts = shorts.filter(s => s.stock_id == stockId && s.closed == 0);
-        const totalShortQty = stockShorts.reduce((sum, s) => sum + parseInt(s.quantity), 0);
-        infoEl.textContent = `Open Shorts: ${totalShortQty}`;
-        infoEl.style.color = totalShortQty > 0 ? 'var(--warning-color)' : 'var(--text-muted)';
-    }
-}
-
-function createValidationMsg() {
-    const div = document.createElement('div');
-    div.id = 'validationMsg';
-    div.style.marginTop = '1rem';
-    div.style.fontWeight = '500';
-    document.getElementById('tradeForm').appendChild(div);
-    return div;
-}
-
-async function handleTrade(e) {
-    e.preventDefault();
-    const stockId = document.getElementById('stockSelect').value;
-    const qty = document.getElementById('quantityInput').value;
-    const duration = document.getElementById('durationSelect').value;
-
-    let endpoint = '';
-    // Corrected Payload: always send duration_seconds for shorts
-    let payload = { stock_id: stockId, quantity: qty };
-
-    if (currentMode === 'spot') {
-        endpoint = currentAction === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-    } else {
-        if (currentAction === 'open') {
-            endpoint = '/api/trades_short_open.php';
-            payload.duration_seconds = duration; // FIXED: Changed from duration to duration_seconds
-        } else {
-            endpoint = '/api/trades_short_close.php';
-        }
-    }
-
-    const submitBtn = document.getElementById('submitBtn');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Processing...';
-
-    try {
-        const data = await fetchJson(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!data.error) {
-            // alert('Trade Successful');
-            // Show inline success message or toast
-            const msg = document.getElementById('validationMsg');
-            msg.textContent = 'Trade Successful!';
-            msg.style.color = 'var(--success-color)';
-
-            await loadData(); // Refresh data
-
-            // Reset quantity?
-            document.getElementById('quantityInput').value = 1;
-            updatePreview();
-        }
-    } catch (err) {
-        console.error(err);
-        if (redirectIfUnauthorized(err)) return;
-        const msg = document.getElementById('validationMsg');
-        msg.textContent = `Trade Failed: ${getErrorMessage(err, 'Network or Server Error')}`;
-        msg.style.color = 'var(--danger-color)';
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit Trade';
-    }
+  } catch (error) {
+    handleFatalError(error);
+  }
 }
 
 init();

@@ -4,13 +4,28 @@ require_once __DIR__ . '/StockService.php';
 
 class TradeService
 {
+    private const DEFAULT_SHORT_DURATIONS = [3600, 86400, 604800];
+
     public static function buy(int $userId, int $institutionId, int $stockId, int $quantity): array
     {
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
+            if ((int)($stock['active'] ?? 0) !== 1) {
+                $pdo->rollBack();
+                return ['error' => 'stock_inactive'];
+            }
+            $limitError = self::validateBuyLimits($pdo, (int)$portfolio['id'], $stock, $stockId, $quantity);
+            if ($limitError !== null) {
+                $pdo->rollBack();
+                return ['error' => $limitError];
+            }
             $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
             $cost = $price * $quantity;
             if ($portfolio['cash_balance'] < $cost) {
@@ -35,6 +50,10 @@ class TradeService
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
             $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
@@ -68,8 +87,25 @@ class TradeService
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
+            if ((int)($stock['active'] ?? 0) !== 1) {
+                $pdo->rollBack();
+                return ['error' => 'stock_inactive'];
+            }
+            if (!self::isAllowedShortDuration($pdo, $institutionId, $durationSeconds)) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_duration'];
+            }
+            $shortLimitError = self::validateShortOpenLimits($pdo, (int)$portfolio['id'], $stock, $stockId, $quantity);
+            if ($shortLimitError !== null) {
+                $pdo->rollBack();
+                return ['error' => $shortLimitError];
+            }
             $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
             $expiresAt = (new DateTimeImmutable())->modify("+{$durationSeconds} seconds");
             $pdo->prepare('INSERT INTO short_positions (portfolio_id, stock_id, quantity, open_price, open_at, duration_seconds, expires_at, closed) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, 0)')
@@ -91,6 +127,10 @@ class TradeService
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
         try {
+            if ($quantity <= 0) {
+                $pdo->rollBack();
+                return ['error' => 'invalid_quantity'];
+            }
             $portfolio = self::getPortfolioRow($pdo, $userId);
             $stock = self::loadStock($pdo, $stockId, $institutionId);
             $price = self::currentPrice($pdo, $stockId, $stock['initial_price'], $institutionId);
@@ -250,5 +290,64 @@ class TradeService
             $pdo->prepare('INSERT INTO positions (portfolio_id, stock_id, quantity, avg_price, created_at, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)')
                 ->execute([$portfolioId, $stockId, $quantity, $price]);
         }
+    }
+
+    private static function validateBuyLimits(PDO $pdo, int $portfolioId, array $stock, int $stockId, int $quantity): ?string
+    {
+        $perUserLimit = $stock['per_user_limit'];
+        if ($perUserLimit !== null && $perUserLimit !== '') {
+            $stmt = $pdo->prepare('SELECT quantity FROM positions WHERE portfolio_id = ? AND stock_id = ? FOR UPDATE');
+            $stmt->execute([$portfolioId, $stockId]);
+            $owned = (int)($stmt->fetchColumn() ?: 0);
+            if ($owned + $quantity > (int)$perUserLimit) {
+                return 'per_user_limit_exceeded';
+            }
+        }
+
+        $totalLimit = $stock['total_limit'];
+        if ($totalLimit !== null && $totalLimit !== '') {
+            $stmt = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM positions WHERE stock_id = ? FOR UPDATE');
+            $stmt->execute([$stockId]);
+            $institutionTotal = (int)($stmt->fetchColumn() ?: 0);
+            if ($institutionTotal + $quantity > (int)$totalLimit) {
+                return 'total_limit_exceeded';
+            }
+        }
+
+        return null;
+    }
+
+    private static function validateShortOpenLimits(PDO $pdo, int $portfolioId, array $stock, int $stockId, int $quantity): ?string
+    {
+        $perUserShortLimit = $stock['per_user_short_limit'];
+        if ($perUserShortLimit === null || $perUserShortLimit === '') {
+            return null;
+        }
+
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM short_positions WHERE portfolio_id = ? AND stock_id = ? AND closed = 0 FOR UPDATE');
+        $stmt->execute([$portfolioId, $stockId]);
+        $openShortQuantity = (int)($stmt->fetchColumn() ?: 0);
+        if ($openShortQuantity + $quantity > (int)$perUserShortLimit) {
+            return 'per_user_short_limit_exceeded';
+        }
+
+        return null;
+    }
+
+    private static function isAllowedShortDuration(PDO $pdo, int $institutionId, int $durationSeconds): bool
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM short_duration_options WHERE institution_id = ? AND duration_seconds = ? LIMIT 1');
+        $stmt->execute([$institutionId, $durationSeconds]);
+        if ($stmt->fetchColumn()) {
+            return true;
+        }
+
+        $hasConfiguredDurations = $pdo->prepare('SELECT 1 FROM short_duration_options WHERE institution_id = ? LIMIT 1');
+        $hasConfiguredDurations->execute([$institutionId]);
+        if ($hasConfiguredDurations->fetchColumn()) {
+            return false;
+        }
+
+        return in_array($durationSeconds, self::DEFAULT_SHORT_DURATIONS, true);
     }
 }

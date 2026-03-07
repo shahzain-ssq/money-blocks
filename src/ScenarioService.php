@@ -48,6 +48,7 @@ class ScenarioService
                 WHERE s.institution_id = ?
                   AND s.status = 'published'
                   AND (s.starts_at IS NULL OR s.starts_at <= CURRENT_TIMESTAMP)
+                  AND (s.ends_at IS NULL OR s.ends_at > CURRENT_TIMESTAMP)
                 ORDER BY s.starts_at DESC, s.created_at DESC";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$userId, $institutionId]);
@@ -86,6 +87,7 @@ class ScenarioService
                 WHERE s.institution_id = ?
                   AND s.status = 'published'
                   AND (s.starts_at IS NULL OR s.starts_at <= CURRENT_TIMESTAMP)
+                  AND (s.ends_at IS NULL OR s.ends_at > CURRENT_TIMESTAMP)
                   AND sr.read_at IS NULL";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$userId, $institutionId]);

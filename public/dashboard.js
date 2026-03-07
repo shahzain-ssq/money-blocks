@@ -1,12 +1,59 @@
 import { WebSocketManager } from './js/ws-manager.js';
 import { fetchJson, getErrorMessage } from './js/api.js';
+import {
+  createEmptyState,
+  escapeHtml,
+  formatCurrency,
+  formatDateTime,
+  formatPercent,
+  formatQuantity,
+  renderMetricCards,
+  requireUser,
+  updateWsStatus,
+} from './js/ui.js';
 
 let configPromise;
 let debounceTimer;
+let wsInitialized = false;
+let lastInitTime = 0;
+let pendingInit = false;
+let initRunning = false;
+let queuedRefresh = false;
+const INIT_THROTTLE_MS = 300;
 
 function debouncedInit() {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => init(), 300);
+  const now = Date.now();
+  const elapsed = now - lastInitTime;
+
+  if (initRunning) {
+    queuedRefresh = true;
+    return;
+  }
+
+  if (elapsed >= INIT_THROTTLE_MS && !pendingInit) {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    lastInitTime = now;
+    init();
+    return;
+  }
+
+  if (pendingInit) {
+    return;
+  }
+
+  pendingInit = true;
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    pendingInit = false;
+    if (initRunning) {
+      queuedRefresh = true;
+      return;
+    }
+    init();
+  }, Math.max(INIT_THROTTLE_MS - elapsed, 0));
 }
 
 async function loadConfig() {
@@ -18,187 +65,328 @@ async function loadConfig() {
 
 function setDashboardError(message) {
   const el = document.getElementById('dashboardError');
-  if (!el) return;
+  if (!el) {
+    return;
+  }
   el.textContent = message;
-  el.style.display = 'block';
+  el.style.display = message ? 'block' : 'none';
 }
 
 function clearDashboardError() {
-  const el = document.getElementById('dashboardError');
-  if (!el) return;
-  el.textContent = '';
-  el.style.display = 'none';
+  setDashboardError('');
 }
 
-function redirectIfUnauthorized(err) {
-  if (err?.status === 401 || err?.code === 'unauthorized') {
-    window.location = '/';
-    return true;
+function createChangePill(change, changePct) {
+  const pill = document.createElement('span');
+  const className = change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
+  pill.className = `pill-change ${className}`;
+  pill.textContent = `${change > 0 ? '+' : ''}${formatCurrency(change)} (${formatPercent(changePct)})`;
+  return pill;
+}
+
+function createTradeButton(stock, action, label, tone = 'outline') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = tone === 'primary' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    window.location = `/trade?ticker=${encodeURIComponent(stock.ticker)}&action=${action}`;
+  });
+  return button;
+}
+
+function renderMetrics(portfolio, scenarios) {
+  renderMetricCards(document.getElementById('dashboardMetrics'), [
+    {
+      label: 'Portfolio Equity',
+      value: formatCurrency(portfolio.totals?.portfolio_value),
+      helper: 'Cash plus current marked-to-market portfolio value.',
+    },
+    {
+      label: 'Net Exposure',
+      value: formatCurrency(portfolio.totals?.net_exposure),
+      helper: `${formatCurrency(portfolio.totals?.long_value)} long / ${formatCurrency(portfolio.totals?.short_exposure)} short`,
+    },
+    {
+      label: 'Unrealized P/L',
+      value: formatCurrency(portfolio.totals?.unrealized),
+      tone: Number(portfolio.totals?.unrealized || 0) >= 0 ? 'positive' : 'negative',
+      helper: 'Open position and short mark-to-market result.',
+    },
+    {
+      label: 'Live Scenarios',
+      value: formatQuantity(scenarios.length),
+      helper: `${formatQuantity(scenarios.filter((scenario) => Number(scenario.is_read) === 0).length)} unread`,
+    },
+  ]);
+}
+
+function renderPositions(portfolio) {
+  const tbody = document.querySelector('#positions tbody');
+  if (!tbody) {
+    return;
   }
-  return false;
+
+  tbody.innerHTML = '';
+  const positions = portfolio.positions || [];
+  if (positions.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 7;
+    cell.appendChild(createEmptyState('No positions yet.', 'Buy from the market overview or open a trade ticket to get started.'));
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+
+  positions.forEach((position) => {
+    const row = document.createElement('tr');
+    const currentPrice = Number(position.current_price ?? position.avg_price ?? 0);
+    const unrealized = Number(position.unrealized_pl ?? 0);
+
+    const instrumentCell = document.createElement('td');
+    instrumentCell.innerHTML = `
+      <div class="stack">
+        <strong>${escapeHtml(position.ticker)}</strong>
+        <span class="subtext">${escapeHtml(position.name ?? 'Instrument')}</span>
+      </div>
+    `;
+
+    const quantityCell = document.createElement('td');
+    quantityCell.className = 'numeric';
+    quantityCell.textContent = formatQuantity(position.quantity);
+
+    const avgCell = document.createElement('td');
+    avgCell.className = 'numeric';
+    avgCell.textContent = formatCurrency(position.avg_price);
+
+    const currentCell = document.createElement('td');
+    currentCell.className = 'numeric';
+    currentCell.textContent = formatCurrency(currentPrice);
+
+    const valueCell = document.createElement('td');
+    valueCell.className = 'numeric';
+    valueCell.textContent = formatCurrency(position.position_value);
+
+    const plCell = document.createElement('td');
+    plCell.className = `numeric ${unrealized >= 0 ? 'positive' : 'negative'}`;
+    plCell.textContent = formatCurrency(unrealized);
+
+    const actionCell = document.createElement('td');
+    actionCell.className = 'action-cell';
+    actionCell.appendChild(createTradeButton(position, 'sell', 'Sell', 'outline'));
+
+    row.append(instrumentCell, quantityCell, avgCell, currentCell, valueCell, plCell, actionCell);
+    tbody.appendChild(row);
+  });
+}
+
+function renderShorts(portfolio) {
+  const tbody = document.querySelector('#shorts tbody');
+  if (!tbody) {
+    return;
+  }
+
+  tbody.innerHTML = '';
+  const shorts = portfolio.shorts || [];
+  if (shorts.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.appendChild(createEmptyState('No active shorts.', 'Switch the trade ticket into short mode when you want to hedge or simulate a bearish view.'));
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+
+  shorts.forEach((shortPosition) => {
+    const row = document.createElement('tr');
+    const currentPrice = Number(shortPosition.current_price ?? shortPosition.open_price ?? 0);
+    const profit = Number(shortPosition.pl ?? 0);
+
+    const instrumentCell = document.createElement('td');
+    instrumentCell.innerHTML = `
+      <div class="stack">
+        <strong>${escapeHtml(shortPosition.ticker)}</strong>
+        <span class="subtext">Opened ${formatDateTime(shortPosition.open_at)}</span>
+      </div>
+    `;
+
+    const quantityCell = document.createElement('td');
+    quantityCell.className = 'numeric';
+    quantityCell.textContent = formatQuantity(shortPosition.quantity);
+
+    const openCell = document.createElement('td');
+    openCell.className = 'numeric';
+    openCell.textContent = formatCurrency(shortPosition.open_price);
+
+    const currentCell = document.createElement('td');
+    currentCell.className = 'numeric';
+    currentCell.textContent = formatCurrency(currentPrice);
+
+    const plCell = document.createElement('td');
+    plCell.className = `numeric ${profit >= 0 ? 'positive' : 'negative'}`;
+    plCell.textContent = formatCurrency(profit);
+
+    const expiryCell = document.createElement('td');
+    expiryCell.textContent = formatDateTime(shortPosition.expires_at);
+
+    row.append(instrumentCell, quantityCell, openCell, currentCell, plCell, expiryCell);
+    tbody.appendChild(row);
+  });
+}
+
+function renderStocks(stocks) {
+  const stocksEl = document.getElementById('stocks');
+  if (!stocksEl) {
+    return;
+  }
+
+  stocksEl.innerHTML = '';
+  if (!stocks.length) {
+    stocksEl.appendChild(createEmptyState('No active stocks available.', 'Ask an administrator to add and price at least one trading instrument.'));
+    return;
+  }
+
+  stocks.forEach((stock) => {
+    const card = document.createElement('article');
+    card.className = 'card stock-card';
+
+    const header = document.createElement('div');
+    header.className = 'stock-card-header';
+    header.innerHTML = `
+      <div class="stack">
+        <strong>${escapeHtml(stock.ticker)}</strong>
+        <span class="subtext">${escapeHtml(stock.name)}</span>
+      </div>
+    `;
+    header.appendChild(createChangePill(Number(stock.change || 0), Number(stock.change_pct || 0)));
+
+    const price = document.createElement('div');
+    price.className = 'stack';
+    price.innerHTML = `
+      <strong>${formatCurrency(stock.current_price ?? stock.initial_price)}</strong>
+      <span class="subtext">${stock.updated_at ? `Updated ${formatDateTime(stock.updated_at)}` : 'Awaiting fresh price update'}</span>
+    `;
+
+    const footer = document.createElement('div');
+    footer.className = 'stock-card-footer';
+    footer.append(
+      createTradeButton(stock, 'buy', 'Buy', 'primary'),
+      createTradeButton(stock, 'sell', 'Sell', 'outline'),
+    );
+
+    card.append(header, price, footer);
+    stocksEl.appendChild(card);
+  });
+}
+
+function renderScenarios(scenarios) {
+  const scenariosEl = document.getElementById('scenarios');
+  if (!scenariosEl) {
+    return;
+  }
+
+  scenariosEl.innerHTML = '';
+  if (!scenarios.length) {
+    scenariosEl.appendChild(createEmptyState('No live scenarios.', 'Published scenarios will appear here as soon as managers release them.'));
+    return;
+  }
+
+  scenarios.forEach((scenario) => {
+    const card = document.createElement('article');
+    card.className = `card scenario-card ${Number(scenario.is_read) === 0 ? 'unread' : ''}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'scenario-meta';
+    meta.innerHTML = `<span>${formatDateTime(scenario.starts_at || scenario.created_at)}</span>`;
+    const badge = document.createElement('span');
+    badge.className = `badge ${Number(scenario.is_read) === 0 ? 'badge-danger' : 'badge-secondary'}`;
+    badge.textContent = Number(scenario.is_read) === 0 ? 'Unread' : 'Reviewed';
+    meta.appendChild(badge);
+
+    const title = document.createElement('strong');
+    title.textContent = scenario.title;
+
+    const description = document.createElement('p');
+    description.textContent = scenario.description || 'This scenario was published without additional detail.';
+
+    const footer = document.createElement('div');
+    footer.className = 'stock-card-footer';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-sm btn-outline';
+    button.textContent = 'Open Scenarios';
+    button.addEventListener('click', () => {
+      window.location = '/scenarios';
+    });
+    footer.appendChild(button);
+
+    card.append(meta, title, description, footer);
+    scenariosEl.appendChild(card);
+  });
 }
 
 async function init() {
+  if (initRunning) {
+    queuedRefresh = true;
+    return;
+  }
+
+  initRunning = true;
   try {
+    lastInitTime = Date.now();
     clearDashboardError();
-    const appConfig = await loadConfig();
-    const me = await fetchJson('/api/auth_me.php');
-    if (!me.user) return window.location = '/';
-    const [portfolio, stocks, crisis] = await Promise.all([
+    if (!wsInitialized) {
+      updateWsStatus('ws-status', 'disconnected');
+    }
+
+    const [appConfig, user] = await Promise.all([
+      loadConfig(),
+      requireUser(),
+    ]);
+    if (!user) {
+      return;
+    }
+
+    const [portfolio, stocks, scenarioFeed] = await Promise.all([
       fetchJson('/api/portfolio.php'),
       fetchJson('/api/stocks.php'),
-      fetchJson('/api/crisis.php')
+      fetchJson('/api/scenarios.php'),
     ]);
-    if (portfolio.warnings && portfolio.warnings.length > 0) {
+
+    const scenarios = scenarioFeed.scenarios || [];
+    document.getElementById('cash').textContent = formatCurrency(portfolio.portfolio.cash_balance);
+
+    renderMetrics(portfolio, scenarios);
+    renderPositions(portfolio);
+    renderShorts(portfolio);
+    renderStocks(stocks.stocks || []);
+    renderScenarios(scenarios);
+
+    if (portfolio.warnings?.length) {
       setDashboardError(portfolio.warnings[0]);
     }
-    document.getElementById('cash').textContent = `Cash Balance: ${portfolio.portfolio.cash_balance}`;
-    const posBody = document.querySelector('#positions tbody');
-    posBody.innerHTML = '';
-    const positions = portfolio.positions || [];
-    positions.forEach((p) => {
-      const tr = document.createElement('tr');
-      const tickerTd = document.createElement('td');
-      tickerTd.textContent = p.ticker;
-      const qtyTd = document.createElement('td');
-      qtyTd.textContent = p.quantity;
-      const priceTd = document.createElement('td');
-      priceTd.textContent = p.avg_price;
-      tr.appendChild(tickerTd);
-      tr.appendChild(qtyTd);
-      tr.appendChild(priceTd);
-      posBody.appendChild(tr);
-    });
-    if (positions.length === 0) {
-      posBody.innerHTML = '<tr><td colspan="3" class="text-center muted">No positions yet.</td></tr>';
-    }
 
-    const stocksEl = document.getElementById('stocks');
-    stocksEl.innerHTML = '';
-    const stockList = stocks.stocks || [];
-    stockList.forEach((s) => {
-      const card = document.createElement('div');
-      card.classList.add('card');
-
-      const strong = document.createElement('strong');
-      strong.textContent = s.ticker;
-      card.appendChild(strong);
-      card.appendChild(document.createTextNode(` ${s.name}`));
-      card.appendChild(document.createElement('br'));
-      card.appendChild(document.createTextNode(`Price: ${s.current_price || s.initial_price}`));
-
-      const actions = document.createElement('div');
-      actions.classList.add('actions');
-      const buyBtn = document.createElement('button');
-      buyBtn.textContent = 'Buy';
-      buyBtn.classList.add('btn', 'btn-sm', 'btn-primary');
-      buyBtn.style.marginRight = '0.5rem';
-      buyBtn.onclick = () => window.location = `/trade?ticker=${encodeURIComponent(s.ticker)}&action=buy`;
-
-      const sellBtn = document.createElement('button');
-      sellBtn.textContent = 'Sell';
-      sellBtn.classList.add('btn', 'btn-sm', 'btn-outline');
-      sellBtn.onclick = () => window.location = `/trade?ticker=${encodeURIComponent(s.ticker)}&action=sell`;
-
-      actions.appendChild(buyBtn);
-      actions.appendChild(sellBtn);
-      card.appendChild(actions);
-
-      stocksEl.appendChild(card);
-    });
-    if (stockList.length === 0) {
-      stocksEl.innerHTML = '<p class="muted">No active stocks available.</p>';
-    }
-
-    const shortsBody = document.querySelector('#shorts tbody');
-    shortsBody.innerHTML = '';
-    const shorts = portfolio.shorts || [];
-    shorts.forEach((sh) => {
-      const tr = document.createElement('tr');
-      const tickerTd = document.createElement('td');
-      tickerTd.textContent = sh.ticker;
-      const qtyTd = document.createElement('td');
-      qtyTd.textContent = sh.quantity;
-      const openPriceTd = document.createElement('td');
-      openPriceTd.textContent = sh.open_price;
-      const expiresTd = document.createElement('td');
-      expiresTd.textContent = sh.expires_at ? new Date(`${sh.expires_at}Z`).toLocaleString() : '-';
-      tr.appendChild(tickerTd);
-      tr.appendChild(qtyTd);
-      tr.appendChild(openPriceTd);
-      tr.appendChild(expiresTd);
-      shortsBody.appendChild(tr);
-    });
-    if (shorts.length === 0) {
-      shortsBody.innerHTML = '<tr><td colspan="4" class="text-center muted">No active shorts.</td></tr>';
-    }
-
-    const scenariosEl = document.getElementById('scenarios');
-    scenariosEl.innerHTML = '';
-    const scenarios = crisis.scenarios || [];
-    scenarios.forEach((sc) => {
-      const li = document.createElement('li');
-      const strong = document.createElement('strong');
-      strong.textContent = sc.title;
-      li.appendChild(strong);
-      li.appendChild(document.createTextNode(` - ${sc.description}`));
-      scenariosEl.appendChild(li);
-    });
-    if (scenarios.length === 0) {
-      scenariosEl.innerHTML = '<li class="muted">No active scenarios.</li>';
-    }
-
-    // Initialize WS Manager
-    if (appConfig.wsPublicUrl) {
-      const wsManager = WebSocketManager.getInstance(me.user.institution_id, appConfig.wsPublicUrl);
-
-      // Subscribe to messages
-      wsManager.subscribe((msg) => {
-        if (msg.type === 'price_update') {
-          debouncedInit();
-        }
-        if (msg.type === 'crisis_published') {
-           if (!msg.title || typeof msg.title !== 'string') {
-            console.warn('Invalid crisis_published message', msg);
-            return;
-          }
-          alert(`New scenario: ${msg.title}`);
+    if (appConfig.wsPublicUrl && !wsInitialized) {
+      wsInitialized = true;
+      const wsManager = WebSocketManager.getInstance(user.institution_id, appConfig.wsPublicUrl);
+      wsManager.subscribe((message) => {
+        if (message.type === 'price_update' || message.type === 'crisis_published') {
           debouncedInit();
         }
       });
-
-      // Update UI Status (if element exists)
-      const statusEl = document.getElementById('ws-status');
-      if (statusEl) {
-          wsManager.onStatusChange((status) => {
-              statusEl.textContent = status === 'connected' ? '● Live' : '○ Offline';
-              statusEl.className = status === 'connected' ? 'status-live' : 'status-offline';
-          });
-      }
+      wsManager.onStatusChange((status) => updateWsStatus('ws-status', status));
     }
-
-  } catch (err) {
-    console.error('Dashboard initialization failed:', err);
-    if (redirectIfUnauthorized(err)) return;
-    setDashboardError(getErrorMessage(err, 'Failed to load dashboard data. Please refresh.'));
-  }
-}
-
-async function trade(stockId, type) {
-  const qty = prompt('Quantity?');
-  if (!qty) return;
-  try {
-    const endpoint = type === 'buy' ? '/api/trades_buy.php' : '/api/trades_sell.php';
-    const data = await fetchJson(endpoint, { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ stock_id: stockId, quantity: Number(qty) }) 
-    });
-    alert(data.message || 'Trade executed successfully');
-    debouncedInit();
-  } catch (err) {
-    console.error('Trade failed:', err);
-    alert(getErrorMessage(err, 'Trade failed. Please try again.'));
+  } catch (error) {
+    console.error('Dashboard initialization failed:', error);
+    setDashboardError(getErrorMessage(error, 'Failed to load dashboard data. Please refresh.'));
+  } finally {
+    initRunning = false;
+    if (queuedRefresh) {
+      queuedRefresh = false;
+      debouncedInit();
+    }
   }
 }
 

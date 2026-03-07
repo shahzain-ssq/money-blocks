@@ -25,8 +25,9 @@ class StockService
         $currentPrice = self::latestPriceFragment();
         $currentTimestamp = self::latestPriceFragment('s', 'created_at');
         $previousPrice = self::latestPriceFragment('s', 'price', 1);
+        $institutionTotalQuantity = '(SELECT COALESCE(SUM(quantity), 0) FROM positions WHERE stock_id = s.id)';
         // updated_at here reflects the latest price timestamp to keep UI displays consistent with price freshness.
-        $stmt = $pdo->prepare("SELECT s.*,{$currentPrice} AS current_price,{$currentTimestamp} AS updated_at,{$previousPrice} AS previous_price FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker");
+        $stmt = $pdo->prepare("SELECT s.*,{$currentPrice} AS current_price,{$currentTimestamp} AS updated_at,{$previousPrice} AS previous_price,{$institutionTotalQuantity} AS institution_total_quantity FROM stocks s WHERE s.institution_id = ? AND s.active = 1 ORDER BY s.ticker");
         $stmt->execute([$institutionId]);
         $stocks = $stmt->fetchAll();
         foreach ($stocks as &$stock) {
@@ -44,7 +45,8 @@ class StockService
     {
         $pdo = Database::getConnection();
         $currentPrice = self::latestPriceFragment();
-        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, s.initial_price, s.total_limit, s.per_user_limit, s.per_user_short_limit, s.active, {$currentPrice} AS current_price FROM stocks s WHERE s.id = ? AND s.institution_id = ?");
+        $institutionTotalQuantity = '(SELECT COALESCE(SUM(quantity), 0) FROM positions WHERE stock_id = s.id)';
+        $stmt = $pdo->prepare("SELECT s.id, s.ticker, s.name, s.initial_price, s.total_limit, s.per_user_limit, s.per_user_short_limit, s.active, {$currentPrice} AS current_price, {$institutionTotalQuantity} AS institution_total_quantity FROM stocks s WHERE s.id = ? AND s.institution_id = ?");
         $stmt->execute([$stockId, $institutionId]);
         $stock = $stmt->fetch();
         return $stock ?: null;

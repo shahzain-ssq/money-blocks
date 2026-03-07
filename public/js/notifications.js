@@ -13,6 +13,9 @@ export async function updateNotifications() {
             }
         }
     } catch (e) {
+        if (e?.status === 401 || e?.code === 'unauthorized') {
+            return;
+        }
         console.error('Failed to update notifications', e);
     }
 }

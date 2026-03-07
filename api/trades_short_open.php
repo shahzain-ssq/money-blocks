@@ -16,4 +16,13 @@ if ($stockId <= 0 || $qty <= 0 || $duration <= 0) {
     jsonError('invalid_input', 'Stock ID, quantity, and duration are required.', 422);
 }
 $result = TradeService::openShort((int)$user['id'], (int)$user['institution_id'], $stockId, $qty, $duration);
+if (isset($result['error'])) {
+    $message = match ($result['error']) {
+        'per_user_short_limit_exceeded' => 'This order exceeds your short-selling limit for the selected stock.',
+        'invalid_duration' => 'The selected short duration is no longer available.',
+        'stock_inactive' => 'This stock is not currently available for new trades.',
+        default => 'Unable to open the short position.',
+    };
+    jsonError($result['error'], $message, 400);
+}
 jsonResponse($result);

@@ -1,5 +1,14 @@
 import { WebSocketManager } from './js/ws-manager.js';
 import { fetchJson, getErrorMessage } from './js/api.js';
+import {
+  createEmptyState,
+  escapeHtml,
+  formatCurrency,
+  formatDateTime,
+  formatPercent,
+  requireUser,
+  updateWsStatus,
+} from './js/ui.js';
 
 let chart;
 let candleSeries;
@@ -7,377 +16,334 @@ let chartContainer;
 let resizeObserver;
 let pendingCandleData = null;
 let pendingFitContent = false;
-let currentStockId = null;
-let currentCandles = []; // Store aggregated candles
-let lastTickTime = 0;
-const isDevEnv = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-function logDebug(message, ...args) {
-    if (!isDevEnv) return;
-    console.debug(`[charts] ${message}`, ...args);
-}
-
-async function init() {
-    try {
-        clearChartError();
-        const config = await fetchJson('/api/config.php');
-        const me = await fetchJson('/api/auth_me.php');
-
-    const chartHeader = document.querySelector('.chart-header');
-    const loadingIndicator = document.createElement('span');
-    loadingIndicator.id = 'chart-loading';
-    loadingIndicator.style.marginLeft = '10px';
-    loadingIndicator.style.fontSize = '0.8rem';
-    loadingIndicator.style.color = '#94a3b8';
-    chartHeader.appendChild(loadingIndicator);
-
-    // Init WebSocket
-    if (config.wsPublicUrl && me.user) {
-        const wsManager = WebSocketManager.getInstance(me.user.institution_id, config.wsPublicUrl);
-        wsManager.onStatusChange((status) => {
-             const el = document.getElementById('ws-status');
-             if(el) {
-                 el.textContent = status === 'connected' ? '● Live' : '○ Offline';
-                 el.className = status === 'connected' ? 'status-live' : 'status-offline';
-             }
-        });
-
-        wsManager.subscribe((msg) => {
-            if (msg.type === 'price_update' && msg.stock_id == currentStockId) {
-                updateChart(msg.price, msg.timestamp || (Date.now() / 1000));
-            }
-        });
-    }
-
-        initChart();
-        loadWatchlist();
-    } catch (e) {
-        console.error('Chart initialization failed', e);
-        if (redirectIfUnauthorized(e)) return;
-        setChartError(getErrorMessage(e, 'Failed to initialize charts.'));
-    }
-}
+let currentStock = null;
+let currentCandles = [];
+let selectionVersion = 0;
 
 function setChartError(message) {
-    const el = document.getElementById('chartError');
-    if (!el) return;
-    el.textContent = message;
-    el.style.display = 'block';
+  const el = document.getElementById('chartError');
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  el.style.display = message ? 'block' : 'none';
 }
 
 function clearChartError() {
-    const el = document.getElementById('chartError');
-    if (!el) return;
-    el.textContent = '';
-    el.style.display = 'none';
+  setChartError('');
 }
 
-function redirectIfUnauthorized(err) {
-    if (err?.status === 401 || err?.code === 'unauthorized') {
-        window.location = '/';
-        return true;
-    }
-    return false;
-}
-
-async function loadWatchlist() {
-    try {
-        clearChartError();
-        const data = await fetchJson('/api/stocks.php');
-        const list = document.getElementById('watchlist');
-        list.innerHTML = '';
-
-        if (!data.stocks || data.stocks.length === 0) {
-            list.innerHTML = '<div style="padding:1rem;">No stocks found.</div>';
-            return;
-        }
-
-        data.stocks.forEach(stock => {
-            const div = document.createElement('div');
-            div.className = 'watchlist-item';
-            div.dataset.id = stock.id;
-            const price = parseFloat(stock.current_price || stock.initial_price).toFixed(2);
-            div.innerHTML = `<strong>${stock.ticker}</strong><br><small>${stock.name}</small><br><span class="price">€${price}</span>`;
-            div.onclick = () => selectStock(stock);
-            list.appendChild(div);
-        });
-
-        if (data.stocks.length > 0) {
-            selectStock(data.stocks[0]);
-        }
-    } catch (e) {
-        console.error("Failed to load watchlist", e);
-        document.getElementById('watchlist').innerHTML = '<div style="padding:1rem;">Failed to load stocks.</div>';
-        if (redirectIfUnauthorized(e)) return;
-        setChartError(getErrorMessage(e, 'Failed to load stocks.'));
-    }
+function updateSelectedStockSummary(stock) {
+  currentStock = stock;
+  document.getElementById('selectedStockTitle').textContent = stock ? `${stock.ticker} - ${stock.name}` : 'Select a Stock';
+  document.getElementById('selectedStockMeta').textContent = stock
+    ? 'Live prices update automatically while the websocket connection is active.'
+    : 'Choose an instrument from the watchlist to load its chart.';
+  document.getElementById('selectedStockPrice').textContent = stock ? formatCurrency(stock.current_price ?? stock.initial_price) : '-';
+  document.getElementById('selectedStockChange').textContent = stock
+    ? `${formatCurrency(stock.change || 0)} (${formatPercent(stock.change_pct || 0)})`
+    : '-';
+  const changeValue = Number(stock?.change || 0);
+  document.getElementById('selectedStockChange').className = changeValue > 0 ? 'positive' : changeValue < 0 ? 'negative' : 'muted';
+  document.getElementById('selectedStockUpdated').textContent = stock?.updated_at ? formatDateTime(stock.updated_at) : 'Awaiting tick';
 }
 
 function initChart() {
-    chartContainer = document.getElementById('tv-chart');
-    if (!chartContainer) return;
+  chartContainer = document.getElementById('tv-chart');
+  if (!chartContainer) {
+    return;
+  }
 
-    if (!resizeObserver) {
-        resizeObserver = new ResizeObserver(entries => {
-            if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
-            const newRect = entries[0].contentRect;
-            if (!chart) {
-                if (newRect.width > 0 && newRect.height > 0) {
-                    tryCreateChart();
-                }
-                return;
-            }
-            chart.applyOptions({ height: newRect.height, width: newRect.width });
-        });
+  resizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) {
+      return;
     }
-    resizeObserver.observe(chartContainer);
-    if (!tryCreateChart()) {
-        logDebug('Chart container size is zero, waiting for resize to initialize.');
+
+    if (!chart) {
+      tryCreateChart();
+      return;
     }
+
+    chart.applyOptions({
+      width: entry.contentRect.width,
+      height: Math.max(entry.contentRect.height, 320),
+    });
+  });
+
+  resizeObserver.observe(chartContainer);
+  tryCreateChart();
 }
 
 function tryCreateChart() {
-    if (chart) return true;
-    if (!chartContainer) return false;
-    const width = chartContainer.clientWidth;
-    const height = chartContainer.clientHeight;
-    if (width === 0 || height === 0) return false;
+  if (chart || !chartContainer) {
+    return;
+  }
 
-    logDebug('Creating chart instance.', { width, height });
-    chart = LightweightCharts.createChart(chartContainer, {
-        width,
-        height,
-        layout: {
-            backgroundColor: '#1e293b',
-            textColor: '#94a3b8',
-        },
-        grid: {
-            vertLines: { color: '#334155' },
-            horzLines: { color: '#334155' },
-        },
-        timeScale: {
-            timeVisible: true,
-            secondsVisible: false,
-        },
-    });
+  const width = chartContainer.clientWidth;
+  const height = Math.max(chartContainer.clientHeight, 320);
+  if (!width || !height) {
+    return;
+  }
 
-    // Switch to Candlestick Series (v5+ API)
-    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-        upColor: '#26a69a',
-        downColor: '#ef5350',
-        borderVisible: false,
-        wickUpColor: '#26a69a',
-        wickDownColor: '#ef5350',
-    });
-    logDebug('Candlestick series created.');
-    flushPendingCandleData();
-    return true;
-}
+  chart = LightweightCharts.createChart(chartContainer, {
+    width,
+    height,
+    layout: {
+      background: { color: '#0d1a31' },
+      textColor: '#97a8c9',
+    },
+    grid: {
+      vertLines: { color: 'rgba(132, 157, 210, 0.14)' },
+      horzLines: { color: 'rgba(132, 157, 210, 0.14)' },
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(132, 157, 210, 0.16)',
+    },
+    timeScale: {
+      borderColor: 'rgba(132, 157, 210, 0.16)',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+  });
 
-function setCandlestickData(data, options = {}) {
-    if (!candleSeries) {
-        console.warn('[charts] Candlestick series not ready. Deferring setData.', options);
-        pendingCandleData = data;
-        pendingFitContent = Boolean(options.fitContent);
-        return false;
-    }
-    logDebug('Setting candlestick data.', { count: data.length, reason: options.reason });
-    candleSeries.setData(data);
-    if (options.fitContent && chart) {
-        chart.timeScale().fitContent();
-    }
-    return true;
-}
+  candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+    upColor: '#2fd1a3',
+    downColor: '#f76f8e',
+    wickUpColor: '#2fd1a3',
+    wickDownColor: '#f76f8e',
+    borderVisible: false,
+  });
 
-function flushPendingCandleData() {
-    if (!candleSeries || !pendingCandleData) return;
-    logDebug('Applying deferred candlestick data.', { count: pendingCandleData.length });
+  if (pendingCandleData) {
     candleSeries.setData(pendingCandleData);
-    if (pendingFitContent && chart) {
-        chart.timeScale().fitContent();
+    if (pendingFitContent) {
+      chart.timeScale().fitContent();
     }
     pendingCandleData = null;
     pendingFitContent = false;
+  }
 }
 
-function destroyChart() {
-    if (resizeObserver) {
-        resizeObserver.disconnect();
-        resizeObserver = null;
-    }
-    if (chart) {
-        chart.remove();
-        chart = null;
-    }
-    candleSeries = null;
-    pendingCandleData = null;
-    pendingFitContent = false;
+function setCandlestickData(data, fitContent = false) {
+  if (!candleSeries) {
+    pendingCandleData = data;
+    pendingFitContent = fitContent;
+    return;
+  }
+
+  candleSeries.setData(data);
+  if (fitContent) {
+    chart.timeScale().fitContent();
+  }
 }
 
-async function selectStock(stock) {
-    if (currentStockId === stock.id) return;
-    currentStockId = stock.id;
-    document.getElementById('selectedStockTitle').textContent = `${stock.ticker} - ${stock.name}`;
-
-    // Highlight item
-    document.querySelectorAll('.watchlist-item').forEach(el => el.classList.remove('active'));
-    const activeItem = document.querySelector(`.watchlist-item[data-id="${stock.id}"]`);
-    if (activeItem) activeItem.classList.add('active');
-
-    const loader = document.getElementById('chart-loading');
-    if (loader) loader.textContent = 'Loading...';
-
-    // Fetch History
-    try {
-        // Request more data points to build candles
-        const data = await fetchJson(`/api/stock_history.php?stock_id=${stock.id}&limit=1000`);
-        logDebug('History fetch complete.', { stockId: stock.id, count: data.prices?.length || 0 });
-
-        if (loader) loader.textContent = '';
-
-        if (data.prices && data.prices.length > 0) {
-            // Transform data for lightweight charts
-            // API returns { price: number, created_at: string } sorted DESC (newest first)
-            // We need ASC (oldest first)
-            const sorted = data.prices.reverse().map(p => {
-                const priceValue = Number.parseFloat(p.price);
-                const parsedTime = parseDate(p.created_at);
-                return {
-                    time: parsedTime,
-                    value: priceValue
-                };
-            }).filter(point => Number.isFinite(point.value) && Number.isFinite(point.time));
-
-            // Aggregate into candles (1 minute intervals)
-            currentCandles = aggregateToCandles(sorted, 60);
-
-            if (currentCandles.length > 0) {
-                setCandlestickData(currentCandles, { fitContent: true, reason: 'initial-load' });
-                // Update lastTickTime
-                lastTickTime = currentCandles[currentCandles.length - 1].time;
-            } else {
-                setCandlestickData([], { reason: 'empty-aggregate' });
-            }
-        } else {
-             setCandlestickData([], { reason: 'no-history' });
-             if (loader) loader.textContent = 'No data';
-        }
-    } catch (e) {
-        console.error("Failed to load history", e);
-        if (loader) loader.textContent = 'Error loading data';
-        if (redirectIfUnauthorized(e)) return;
-        setChartError(getErrorMessage(e, 'Failed to load chart history.'));
-    }
-}
-
-function parseDate(dateStr) {
-    // Handle MySQL DATETIME format "YYYY-MM-DD HH:MM:SS" (stored in UTC).
-    if (typeof dateStr === 'string' && dateStr.indexOf('T') === -1) {
-        return new Date(dateStr.replace(' ', 'T') + 'Z').getTime() / 1000;
-    }
-    return new Date(dateStr).getTime() / 1000;
+function parseDate(value) {
+  if (typeof value === 'string' && !value.includes('T')) {
+    return new Date(value.replace(' ', 'T') + 'Z').getTime() / 1000;
+  }
+  return new Date(value).getTime() / 1000;
 }
 
 function aggregateToCandles(ticks, intervalSeconds) {
-    if (!ticks || ticks.length === 0) return [];
+  if (!ticks.length) {
+    return [];
+  }
 
-    const candles = [];
-    let currentCandle = null;
-    let periodStart = 0;
+  const candles = [];
+  let currentCandle = null;
 
-    ticks.forEach(tick => {
-        const tickTime = tick.time;
-        // Align time to interval bucket
-        const bucket = Math.floor(tickTime / intervalSeconds) * intervalSeconds;
-
-        if (currentCandle && bucket === periodStart) {
-            // Update current candle
-            currentCandle.high = Math.max(currentCandle.high, tick.value);
-            currentCandle.low = Math.min(currentCandle.low, tick.value);
-            currentCandle.close = tick.value;
-        } else {
-            // Close previous candle and start new one
-            if (currentCandle) {
-                candles.push(currentCandle);
-            }
-            periodStart = bucket;
-            currentCandle = {
-                time: periodStart,
-                open: tick.value,
-                high: tick.value,
-                low: tick.value,
-                close: tick.value
-            };
-        }
-    });
-
-    // Push the last one
-    if (currentCandle) {
-        candles.push(currentCandle);
+  ticks.forEach((tick) => {
+    const bucket = Math.floor(tick.time / intervalSeconds) * intervalSeconds;
+    if (currentCandle && currentCandle.time === bucket) {
+      currentCandle.high = Math.max(currentCandle.high, tick.value);
+      currentCandle.low = Math.min(currentCandle.low, tick.value);
+      currentCandle.close = tick.value;
+      return;
     }
 
-    return candles;
+    if (currentCandle) {
+      candles.push(currentCandle);
+    }
+
+    currentCandle = {
+      time: bucket,
+      open: tick.value,
+      high: tick.value,
+      low: tick.value,
+      close: tick.value,
+    };
+  });
+
+  if (currentCandle) {
+    candles.push(currentCandle);
+  }
+
+  return candles;
+}
+
+async function selectStock(stock) {
+  if (!stock) {
+    return;
+  }
+
+  const localSelectedId = Number(stock.id);
+  selectionVersion += 1;
+  const localSelectionVersion = selectionVersion;
+
+  updateSelectedStockSummary(stock);
+  document.querySelectorAll('.watchlist-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.id === String(stock.id));
+  });
+  currentCandles = [];
+  setCandlestickData([], true);
+
+  try {
+    clearChartError();
+    const data = await fetchJson(`/api/stock_history.php?stock_id=${stock.id}&limit=500`);
+    const sorted = (data.prices || [])
+      .slice()
+      .reverse()
+      .map((pricePoint) => ({
+        time: parseDate(pricePoint.created_at),
+        value: Number(pricePoint.price),
+      }))
+      .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
+
+    if (localSelectionVersion !== selectionVersion || Number(currentStock?.id) !== localSelectedId) {
+      return;
+    }
+
+    currentCandles = aggregateToCandles(sorted, 60);
+    setCandlestickData(currentCandles, true);
+  } catch (error) {
+    console.error('Failed to load history', error);
+    setChartError(getErrorMessage(error, 'Failed to load chart history.'));
+  }
+}
+
+function renderWatchlist(stocks) {
+  const list = document.getElementById('watchlist');
+  list.innerHTML = '';
+
+  if (!stocks.length) {
+    list.appendChild(createEmptyState('No stocks found.', 'Once an administrator adds instruments they will appear here.'));
+    return;
+  }
+
+  stocks.forEach((stock) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'watchlist-item';
+    item.dataset.id = String(stock.id);
+
+    const details = document.createElement('div');
+    details.className = 'stack';
+    details.innerHTML = `
+      <strong>${escapeHtml(stock.ticker)}</strong>
+      <span class="subtext">${escapeHtml(stock.name)}</span>
+    `;
+
+    const pricing = document.createElement('div');
+    pricing.className = 'stack';
+    pricing.style.alignItems = 'flex-end';
+    pricing.innerHTML = `
+      <strong class="watchlist-price">${formatCurrency(stock.current_price ?? stock.initial_price)}</strong>
+      <span class="${Number(stock.change || 0) >= 0 ? 'positive' : 'negative'}">${formatPercent(stock.change_pct || 0)}</span>
+    `;
+
+    item.append(details, pricing);
+    item.addEventListener('click', () => selectStock(stock));
+    list.appendChild(item);
+  });
+
+  selectStock(currentStock ? stocks.find((stock) => stock.id === currentStock.id) || stocks[0] : stocks[0]);
 }
 
 function updateChart(price, timestamp) {
-    if (!candleSeries) {
-        console.warn('[charts] Candlestick series not ready. Skipping update.');
-        return;
+  if (!candleSeries || !currentStock) {
+    return;
+  }
+
+  const numericPrice = Number(price);
+  const time = Number.isFinite(Number(timestamp)) ? Number(timestamp) : Date.now() / 1000;
+  if (!Number.isFinite(numericPrice)) {
+    return;
+  }
+  const baselinePrice = Number(currentStock.previous_price ?? currentStock.initial_price ?? numericPrice);
+
+  const bucket = Math.floor(time / 60) * 60;
+  const lastCandle = currentCandles[currentCandles.length - 1];
+
+  if (lastCandle && lastCandle.time === bucket) {
+    lastCandle.high = Math.max(lastCandle.high, numericPrice);
+    lastCandle.low = Math.min(lastCandle.low, numericPrice);
+    lastCandle.close = numericPrice;
+    candleSeries.update(lastCandle);
+  } else {
+    const newCandle = {
+      time: bucket,
+      open: numericPrice,
+      high: numericPrice,
+      low: numericPrice,
+      close: numericPrice,
+    };
+    currentCandles.push(newCandle);
+    candleSeries.update(newCandle);
+  }
+
+  currentStock = {
+    ...currentStock,
+    current_price: numericPrice,
+    change: numericPrice - baselinePrice,
+    change_pct: baselinePrice
+      ? ((numericPrice - baselinePrice) / baselinePrice) * 100
+      : 0,
+    updated_at: new Date(time * 1000).toISOString(),
+  };
+  updateSelectedStockSummary(currentStock);
+}
+
+function destroyChart() {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  if (chart) {
+    chart.remove();
+    chart = null;
+  }
+  candleSeries = null;
+}
+
+async function init() {
+  try {
+    clearChartError();
+    updateWsStatus('ws-status', 'disconnected');
+
+    const [config, user] = await Promise.all([
+      fetchJson('/api/config.php'),
+      requireUser(),
+    ]);
+    if (!user) {
+      return;
     }
 
-    // Use provided timestamp or now
-    // If timestamp is not provided from WS, use Date.now()
-    const timestampSeconds = Number(timestamp);
-    const now = Number.isFinite(timestampSeconds) ? timestampSeconds : (Date.now() / 1000);
-    const priceFloat = parseFloat(price);
-    if (!Number.isFinite(priceFloat)) {
-        console.warn('[charts] Invalid price update received.', price);
-        return;
+    initChart();
+    const data = await fetchJson('/api/stocks.php');
+    renderWatchlist(data.stocks || []);
+
+    if (config.wsPublicUrl) {
+      const wsManager = WebSocketManager.getInstance(user.institution_id, config.wsPublicUrl);
+      wsManager.onStatusChange((status) => updateWsStatus('ws-status', status));
+      wsManager.subscribe((message) => {
+        if (message.type === 'price_update' && currentStock && Number(message.stock_id) === Number(currentStock.id)) {
+          updateChart(message.price, message.timestamp);
+        }
+      });
     }
-
-    // 1-minute interval
-    const intervalSeconds = 60;
-    const bucket = Math.floor(now / intervalSeconds) * intervalSeconds;
-
-    // Check if we need to update the last candle or start a new one
-    // We need to look at the last candle in data
-    // But lightweight charts doesn't give us easy access to "last candle data" from the series object directly
-    // So we maintain `currentCandles` state or at least the last one.
-
-    // Actually, `candleSeries.update(candle)` updates the candle with matching time, or appends if new time.
-
-    // We need to know the state of the candle for 'bucket'.
-    // Since we aggregated 1000 ticks, we might have a candle for 'bucket' already if it's recent.
-    // OR we might be starting a fresh one.
-
-    // Limitation: If we just refreshed, we have `currentCandles`.
-    // Let's rely on `candleSeries.update` logic:
-    // If we pass a candle with same time, it replaces it.
-    // But we need to know the OPEN, HIGH, LOW to update it correctly.
-    // We can't query the chart for current values easily.
-
-    // Workaround: We track the "active candle" in memory.
-    let lastCandle = currentCandles.length > 0 ? currentCandles[currentCandles.length - 1] : null;
-
-    if (lastCandle && lastCandle.time === bucket) {
-        // Update existing candle
-        lastCandle.high = Math.max(lastCandle.high, priceFloat);
-        lastCandle.low = Math.min(lastCandle.low, priceFloat);
-        lastCandle.close = priceFloat;
-        candleSeries.update(lastCandle);
-    } else {
-        // New candle
-        const newCandle = {
-            time: bucket,
-            open: priceFloat,
-            high: priceFloat,
-            low: priceFloat,
-            close: priceFloat
-        };
-        currentCandles.push(newCandle);
-        candleSeries.update(newCandle);
-        lastTickTime = bucket;
-    }
+  } catch (error) {
+    console.error('Chart initialization failed', error);
+    setChartError(getErrorMessage(error, 'Failed to initialize charts.'));
+  }
 }
 
 window.addEventListener('beforeunload', destroyChart);

@@ -4,35 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Money Blocks - Admin</title>
+  <link rel="preload" href="/fonts/Manrope-latin-variable.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="/styles.css" />
-  <style>
-      .admin-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 1.5rem;
-      }
-      .admin-card {
-          background: var(--bg-card);
-          padding: 1.5rem;
-          border-radius: 8px;
-          border: 1px solid var(--border-color);
-      }
-      .scrollable-list {
-          max-height: 300px;
-          overflow-y: auto;
-          margin-top: 1rem;
-      }
-      .participant-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 0.5rem;
-          border-bottom: 1px solid var(--border-color);
-      }
-      .participant-item:last-child {
-          border-bottom: none;
-      }
-  </style>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
   <div class="app-shell">
@@ -40,149 +14,147 @@
       <div class="brand">MoneyBlocks</div>
       <nav class="nav">
         <a href="/dashboard" class="nav-link">Dashboard</a>
-        <a href="/chart" class="nav-link">Markets & Charts</a>
+        <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
         <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link active" id="managerLink">Admin</a>
       </nav>
       <div class="sidebar-footer">
-          <div id="ws-status" class="status-offline">○ Offline</div>
+        <div id="ws-status" class="status-indicator disconnected"></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="top-bar">
-         <h2>Admin Panel</h2>
-         <div class="user-info">
-             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
-         </div>
+        <div class="page-heading">
+          <h2>Admin Panel</h2>
+          <p class="page-subtitle">Manage participants, stock listings, short-duration options, and simulation scenarios for your institution.</p>
+        </div>
+        <div class="user-info">
+          <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+        </div>
       </div>
 
       <div id="managerError" class="alert alert-error" style="display:none;"></div>
 
-      <div class="content admin-grid">
-          <!-- Participants -->
-          <div class="admin-card">
+      <div class="grid-dashboard">
+        <section class="admin-card">
+          <div class="section-header">
+            <div>
               <h3>Participants</h3>
-              <div class="form-row">
-                  <input type="text" id="participantSearch" class="input" placeholder="Search..." />
-                  <button class="btn" type="button" id="addParticipantBtn">+ Add</button>
-              </div>
-              <div id="participantsList" class="scrollable-list">
-                  <!-- JS Populated -->
-              </div>
+              <p>Create users, reset passwords, and manage elevated access.</p>
+            </div>
           </div>
-
-          <!-- Stocks -->
-          <div class="admin-card">
-              <h3>Stocks Management</h3>
-               <div class="form-row">
-                  <input type="text" id="stockSearch" class="input" placeholder="Search..." />
-                  <button class="btn" type="button" id="addStockBtn">+ Add</button>
-              </div>
-              <div id="stocksList" class="scrollable-list">
-                   <!-- JS Populated -->
-              </div>
+          <div class="form-row">
+            <label class="sr-only" for="participantSearch">Search participants</label>
+            <input type="text" id="participantSearch" class="input" placeholder="Search participants" />
+            <button class="btn" type="button" id="addParticipantBtn" aria-label="Add participant">Add participant</button>
           </div>
+          <div id="participantsList" class="scrollable-list"></div>
+        </section>
 
-           <!-- Config -->
-          <div class="admin-card">
+        <section class="admin-card">
+          <div class="section-header">
+            <div>
+              <h3>Stocks</h3>
+              <p>Add, edit, and price institution-specific trading instruments.</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="sr-only" for="stockSearch">Search stocks</label>
+            <input type="text" id="stockSearch" class="input" placeholder="Search stocks" />
+            <button class="btn" type="button" id="addStockBtn">Add stock</button>
+          </div>
+          <div id="stocksList" class="scrollable-list"></div>
+        </section>
+
+        <section class="admin-card">
+          <div class="section-header">
+            <div>
               <h3>Configuration</h3>
-              <p class="muted">Global Trading Settings</p>
-
-              <div class="form-group">
-                  <label>Short Duration Options (seconds, comma separated)</label>
-                  <input type="text" id="shortDurations" class="input" placeholder="3600, 86400" />
-              </div>
-              <button class="btn btn-primary" id="saveConfigBtn" type="button">Save Config</button>
+              <p>Control the short-duration choices available in the trading ticket.</p>
+            </div>
           </div>
+          <div class="form-group">
+            <label for="shortDurations">Short Duration Options (seconds, comma separated)</label>
+            <input type="text" id="shortDurations" class="input" placeholder="3600, 86400, 604800" />
+          </div>
+          <button class="btn btn-primary" id="saveConfigBtn" type="button">Save Config</button>
+        </section>
 
-          <!-- Crisis -->
-           <div class="admin-card full-width">
+        <section class="admin-card full-width">
+          <div class="section-header">
+            <div>
               <h3>Crisis Scenarios</h3>
-              <div class="form-row" style="margin-bottom: 1rem;">
-                  <button class="btn" type="button" id="addScenarioBtn">+ Add Scenario</button>
-              </div>
-              <div id="scenariosList" class="scrollable-list">
-                  <!-- JS Populated -->
-              </div>
+              <p>Create or revise live scenario announcements for participants.</p>
+            </div>
+            <button class="btn" type="button" id="addScenarioBtn">Add scenario</button>
           </div>
+          <div id="scenariosList" class="scrollable-list"></div>
+        </section>
       </div>
     </main>
 
-    <!-- Add Participant Modal -->
     <div id="addParticipantModal" class="modal">
-        <div class="modal-content">
-             <span class="modal-close" data-action="close-modal">&times;</span>
-             <h3>Add Participant</h3>
-             <div id="participantFormError" class="alert alert-error" style="display:none;"></div>
-             <form id="addParticipantForm">
-                 <div class="form-group"><label>Username</label><input class="input" name="username" required></div>
-                 <div class="form-group"><label>Email</label><input class="input" name="email" type="email"></div>
-                 <button class="btn btn-primary full-width" type="submit">Create</button>
-             </form>
-        </div>
+      <div class="modal-content">
+        <button type="button" class="modal-close" data-action="close-modal" aria-label="Close">&times;</button>
+        <h3>Add Participant</h3>
+        <div id="participantFormError" class="alert alert-error" style="display:none;"></div>
+        <form id="addParticipantForm">
+          <div class="form-group"><label for="participantUsername">Username</label><input class="input" id="participantUsername" name="username" required></div>
+          <div class="form-group"><label for="participantEmail">Email</label><input class="input" id="participantEmail" name="email" type="email"></div>
+          <button class="btn btn-primary full-width" type="submit">Create</button>
+        </form>
+      </div>
     </div>
 
-    <!-- Scenario Modal -->
     <div id="scenarioModal" class="modal">
-        <div class="modal-content">
-             <span class="modal-close" data-action="close-modal">&times;</span>
-             <h3 id="scenarioModalTitle">Add Scenario</h3>
-             <div id="scenarioFormError" class="alert alert-error" style="display:none;"></div>
-             <form id="scenarioForm">
-                 <input type="hidden" name="id" id="scenarioId">
-                 <div class="form-group"><label>Title</label><input class="input" name="title" id="scenarioTitle" required></div>
-                 <div class="form-group"><label>Description</label><textarea class="input" name="description" id="scenarioDesc" rows="4"></textarea></div>
-                 <div class="form-group">
-                     <label>Status</label>
-                     <select class="input" name="status" id="scenarioStatus">
-                         <option value="draft">Draft</option>
-                         <option value="published">Published</option>
-                         <option value="archived">Archived</option>
-                     </select>
-                 </div>
-                 <div class="form-group">
-                     <label>Scheduled Start (local time)</label>
-                     <input class="input" type="datetime-local" name="starts_at" id="scenarioStart">
-                     <small class="muted">Leave blank for immediate if published. Saved in UTC on the server.</small>
-                 </div>
-                 <button class="btn btn-primary full-width" type="submit">Save</button>
-             </form>
-        </div>
+      <div class="modal-content">
+        <button type="button" class="modal-close" data-action="close-modal" aria-label="Close">&times;</button>
+        <h3 id="scenarioModalTitle">Add Scenario</h3>
+        <div id="scenarioFormError" class="alert alert-error" style="display:none;"></div>
+        <form id="scenarioForm">
+          <input type="hidden" name="id" id="scenarioId">
+          <div class="form-group"><label for="scenarioTitle">Title</label><input class="input" name="title" id="scenarioTitle" required></div>
+          <div class="form-group"><label for="scenarioDesc">Description</label><textarea class="input" name="description" id="scenarioDesc" rows="4"></textarea></div>
+          <div class="form-group">
+            <label for="scenarioStatus">Status</label>
+            <select class="input" name="status" id="scenarioStatus">
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="scenarioStart">Scheduled Start (local time)</label>
+            <input class="input" type="datetime-local" name="starts_at" id="scenarioStart">
+            <small class="muted">Leave blank for immediate publication. Values are stored in UTC on the server.</small>
+          </div>
+          <button class="btn btn-primary full-width" type="submit">Save</button>
+        </form>
+      </div>
     </div>
 
-    <!-- Add Stock Modal -->
     <div id="addStockModal" class="modal">
-        <div class="modal-content">
-             <span class="modal-close" data-action="close-modal">&times;</span>
-             <h3>Add Stock</h3>
-             <div id="stockFormError" class="alert alert-error" style="display:none;"></div>
-             <form id="addStockForm">
-                 <div class="form-group"><label>Ticker</label><input class="input" name="ticker" required></div>
-                 <div class="form-group"><label>Name</label><input class="input" name="name" required></div>
-                 <div class="form-group" data-field="initial-price"><label>Initial Price</label><input class="input" name="initial_price" type="number" step="0.01" required></div>
-                 <div class="form-group" data-field="current-price" style="display:none;"><label>Current Price</label><input class="input" name="price" type="number" step="0.01"></div>
-                  <div class="form-group"><label>Total Limit</label><input class="input" name="total_limit" type="number"></div>
-                 <div class="form-group"><label>Per-User Long Limit</label><input class="input" name="per_user_limit" type="number"></div>
-                 <div class="form-group"><label>Per-User Short Limit</label><input class="input" name="per_user_short_limit" type="number"></div>
-                 <button class="btn btn-primary full-width" type="submit">Create</button>
-             </form>
-        </div>
+      <div class="modal-content">
+        <button type="button" class="modal-close" data-action="close-modal" aria-label="Close">&times;</button>
+        <h3>Add Stock</h3>
+        <div id="stockFormError" class="alert alert-error" style="display:none;"></div>
+        <form id="addStockForm">
+          <div class="form-group"><label for="stockTicker">Ticker</label><input class="input" id="stockTicker" name="ticker" required></div>
+          <div class="form-group"><label for="stockName">Name</label><input class="input" id="stockName" name="name" required></div>
+          <div class="form-group" data-field="initial-price"><label for="stockInitialPrice">Initial Price</label><input class="input" id="stockInitialPrice" name="initial_price" type="number" step="0.01" required></div>
+          <div class="form-group" data-field="current-price" style="display:none;"><label for="stockCurrentPrice">Current Price</label><input class="input" id="stockCurrentPrice" name="price" type="number" step="0.01"></div>
+          <div class="form-group"><label for="stockTotalLimit">Total Limit</label><input class="input" id="stockTotalLimit" name="total_limit" type="number"></div>
+          <div class="form-group"><label for="stockPerUserLimit">Per-User Long Limit</label><input class="input" id="stockPerUserLimit" name="per_user_limit" type="number"></div>
+          <div class="form-group"><label for="stockPerUserShortLimit">Per-User Short Limit</label><input class="input" id="stockPerUserShortLimit" name="per_user_short_limit" type="number"></div>
+          <button class="btn btn-primary full-width" type="submit">Save Stock</button>
+        </form>
+      </div>
     </div>
-
   </div>
   <script type="module" src="/manager.js"></script>
   <script type="module" src="/js/notifications.js"></script>
-  <script>
-      // Reuse login check
-       fetch('/api/auth_me.php')
-        .then(res => res.json())
-        .then(data => {
-            if (!data.user || (data.user.role !== 'manager' && data.user.role !== 'admin')) window.location = '/';
-        });
-      document.getElementById('logoutBtn').onclick = () => window.location = '/';
-  </script>
 </body>
 </html>

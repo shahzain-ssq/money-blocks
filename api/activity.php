@@ -19,7 +19,7 @@ $stmt = $pdo->prepare('
     JOIN portfolios p ON t.portfolio_id = p.id
     JOIN stocks s ON t.stock_id = s.id
     WHERE p.user_id = ?
-    ORDER BY t.created_at DESC
+    ORDER BY t.created_at DESC, t.id DESC
     LIMIT 100
 ');
 

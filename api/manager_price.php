@@ -39,5 +39,6 @@ BroadcastService::send([
     'institution_id' => (int)$user['institution_id'],
     'stock_id' => $stockId,
     'price' => $price,
+    'timestamp' => time(),
 ]);
 jsonResponse(['ok' => true, 'price' => $price]);

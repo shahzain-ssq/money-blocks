@@ -36,14 +36,15 @@ class PortfolioService
             FROM positions p JOIN stocks s ON p.stock_id = s.id AND s.institution_id = ? WHERE p.portfolio_id = ?");
         $positionsStmt->execute([$institutionId, $portfolio['id']]);
         $positions = $positionsStmt->fetchAll();
-        $portfolioValue = 0;
+        $cashBalance = (float)($portfolio['cash_balance'] ?? 0);
+        $longValue = 0;
         $unrealized = 0;
         foreach ($positions as &$pos) {
             $current = $pos['current_price'] ?? $pos['avg_price'] ?? 0;
             $avg = $pos['avg_price'] ?? 0;
             $pos['position_value'] = $current * $pos['quantity'];
             $pos['unrealized_pl'] = ($current - $avg) * $pos['quantity'];
-            $portfolioValue += $pos['position_value'];
+            $longValue += $pos['position_value'];
             $unrealized += $pos['unrealized_pl'];
         }
 
@@ -52,20 +53,29 @@ class PortfolioService
             FROM short_positions sp JOIN stocks s ON sp.stock_id = s.id WHERE sp.portfolio_id = ? AND s.institution_id = ? AND sp.closed = 0");
         $shortsStmt->execute([$portfolio['id'], $institutionId]);
         $shorts = $shortsStmt->fetchAll();
+        $shortExposure = 0;
+        $shortUnrealized = 0;
         foreach ($shorts as &$sh) {
             $current = $sh['current_price'] ?? $sh['open_price'] ?? 0;
             $open = $sh['open_price'] ?? 0;
             $sh['pl'] = ($open - $current) * $sh['quantity'];
-            $portfolioValue -= $current * $sh['quantity'];
+            $shortExposure += $current * $sh['quantity'];
+            $shortUnrealized += $sh['pl'];
             $unrealized += $sh['pl'];
         }
+
+        $equityValue = $cashBalance + $longValue + $shortUnrealized;
+        $netExposure = $longValue - $shortExposure;
 
         return [
             'portfolio' => $portfolio,
             'positions' => $positions,
             'shorts' => $shorts,
             'totals' => [
-                'portfolio_value' => $portfolioValue,
+                'portfolio_value' => $equityValue,
+                'long_value' => $longValue,
+                'short_exposure' => $shortExposure,
+                'net_exposure' => $netExposure,
                 'unrealized' => $unrealized,
                 'realized' => 0,
             ],

@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Money Blocks - Activity</title>
+  <link rel="preload" href="/fonts/Manrope-latin-variable.woff2" as="font" type="font/woff2" />
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
   <div class="app-shell">
@@ -12,63 +14,61 @@
       <div class="brand">MoneyBlocks</div>
       <nav class="nav">
         <a href="/dashboard" class="nav-link">Dashboard</a>
-        <a href="/chart" class="nav-link">Markets & Charts</a>
+        <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
         <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link active">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
       <div class="sidebar-footer">
-          <div id="ws-status" class="status-offline">○ Offline</div>
+        <div id="ws-status" class="status-indicator disconnected"></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="top-bar">
-         <h2>Transaction Activity</h2>
-         <div class="user-info">
-             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
-         </div>
+        <div class="page-heading">
+          <h2>Transaction Activity</h2>
+          <p class="page-subtitle">Review the most recent trade executions, quantities, and notional amounts in one audit-friendly feed.</p>
+        </div>
+        <div class="user-info">
+          <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+        </div>
       </div>
 
       <div id="activityError" class="alert alert-error" style="display:none;"></div>
 
-      <div class="content">
-          <div class="card full-width">
-              <table class="table" id="activityTable">
-                  <thead>
-                      <tr>
-                          <th>Time</th>
-                          <th>Type</th>
-                          <th>Stock</th>
-                          <th>Quantity</th>
-                          <th>Price</th>
-                          <th>Total</th>
-                      </tr>
-                  </thead>
-                  <tbody id="activityBody">
-                      <!-- Populated via JS -->
-                  </tbody>
-              </table>
-              <div class="pagination" id="pagination">
-                  <!-- Simple pagination controls if needed -->
-              </div>
+      <div class="content-stack">
+        <section id="activityMetrics" class="metric-grid" aria-label="Activity summary"></section>
+
+        <section class="card full-width">
+          <div class="section-header">
+            <div>
+              <h3>Latest Orders</h3>
+              <p>Most recent 100 trades placed from this portfolio, sorted newest first.</p>
+            </div>
           </div>
+          <div class="table-wrap">
+            <table class="table" id="activityTable">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Instrument</th>
+                  <th class="numeric">Quantity</th>
+                  <th class="numeric">Price</th>
+                  <th class="numeric">Notional</th>
+                </tr>
+              </thead>
+              <tbody id="activityBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pagination"></div>
+        </section>
       </div>
     </main>
   </div>
   <script type="module" src="/activity.js"></script>
   <script type="module" src="/js/notifications.js"></script>
-  <script>
-      fetch('/api/auth_me.php')
-        .then(res => res.json())
-        .then(data => {
-            if (!data.user) window.location = '/';
-             if (data.user.role === 'manager' || data.user.role === 'admin') {
-                document.getElementById('managerLink').style.display = 'block';
-            }
-        });
-      document.getElementById('logoutBtn').onclick = () => window.location = '/';
-  </script>
 </body>
 </html>
