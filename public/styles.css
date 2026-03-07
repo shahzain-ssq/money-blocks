@@ -620,7 +620,7 @@ svg {
 .input:focus-visible {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--shadow-glow);
+  box-shadow: 0 0 0 3px var(--border-glow), var(--shadow-glow);
   background: rgba(18, 22, 31, 1);
 }
 
@@ -1261,7 +1261,7 @@ button:focus-visible,
 
   .brand,
   .nav-link::after,
-  .badge {
+  .sidebar .badge {
     display: none;
   }
 
