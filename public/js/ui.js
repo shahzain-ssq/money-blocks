@@ -152,6 +152,7 @@ export async function requireUser({ managerOnly = false } = {}) {
 }
 
 export function bindMobileNav() {
+  const MOBILE_BP = 768;
   const toggleBtn = document.getElementById('mobileNavToggle');
   const sidebar = document.querySelector('.sidebar');
   if (!toggleBtn || !sidebar || toggleBtn.dataset.bound === 'true') {
@@ -162,38 +163,50 @@ export function bindMobileNav() {
   if (!sidebar.id) sidebar.id = 'app-sidebar';
   toggleBtn.setAttribute('aria-controls', sidebar.id);
 
-  const initIsOpen = sidebar.classList.contains('is-open');
-  toggleBtn.setAttribute('aria-expanded', initIsOpen ? 'true' : 'false');
-  if (!initIsOpen) {
-    sidebar.setAttribute('aria-hidden', 'true');
-    sidebar.setAttribute('inert', '');
-  } else {
-    sidebar.removeAttribute('aria-hidden');
-    sidebar.removeAttribute('inert');
+  function isMobile() {
+    return window.innerWidth <= MOBILE_BP;
   }
 
-  toggleBtn.addEventListener('click', () => {
-    const isNowOpen = sidebar.classList.toggle('is-open');
-    toggleBtn.setAttribute('aria-expanded', isNowOpen ? 'true' : 'false');
-    if (!isNowOpen) {
-      sidebar.setAttribute('aria-hidden', 'true');
-      sidebar.setAttribute('inert', '');
-    } else {
+  // Only lock the sidebar on mobile when the drawer is closed
+  function syncSidebarState() {
+    if (!isMobile()) {
+      // Desktop: sidebar is always visible and interactive
       sidebar.removeAttribute('aria-hidden');
       sidebar.removeAttribute('inert');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      return;
     }
+    // Mobile: lock sidebar unless drawer is open
+    const isOpen = sidebar.classList.contains('is-open');
+    toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (isOpen) {
+      sidebar.removeAttribute('aria-hidden');
+      sidebar.removeAttribute('inert');
+    } else {
+      sidebar.setAttribute('aria-hidden', 'true');
+      sidebar.setAttribute('inert', '');
+    }
+  }
+
+  // Initialize
+  syncSidebarState();
+
+  // Re-sync when crossing the breakpoint
+  window.addEventListener('resize', syncSidebarState);
+
+  toggleBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('is-open');
+    syncSidebarState();
   });
 
   // Close drawer if clicking outside of the sidebar on mobile
   document.addEventListener('click', (event) => {
-    if (window.innerWidth <= 768 &&
+    if (isMobile() &&
       sidebar.classList.contains('is-open') &&
       !sidebar.contains(event.target) &&
       !toggleBtn.contains(event.target)) {
       sidebar.classList.remove('is-open');
-      toggleBtn.setAttribute('aria-expanded', 'false');
-      sidebar.setAttribute('aria-hidden', 'true');
-      sidebar.setAttribute('inert', '');
+      syncSidebarState();
     }
   });
 }
