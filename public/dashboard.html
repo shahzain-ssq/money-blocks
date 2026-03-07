@@ -5,17 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Money Blocks - Dashboard</title>
   <link rel="stylesheet" href="/styles.css" />
-  <style>
-      .status-dot {
-          display: inline-block;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-right: 5px;
-      }
-      .status-live { color: #4ade80; }
-      .status-offline { color: #94a3b8; }
-  </style>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
   <div class="app-shell">
@@ -23,94 +13,108 @@
       <div class="brand">MoneyBlocks</div>
       <nav class="nav">
         <a href="/dashboard" class="nav-link active">Dashboard</a>
-        <a href="/chart" class="nav-link">Markets & Charts</a>
+        <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
         <a href="/scenarios" class="nav-link">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
       <div class="sidebar-footer">
-          <div id="ws-status" class="status-offline">○ Offline</div>
+        <div id="ws-status" class="status-indicator disconnected"></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="top-bar">
-         <h2 id="pageTitle">Dashboard</h2>
-         <div class="user-info">
-             <span id="cash">Cash: Loading...</span>
-             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
-         </div>
+        <div class="page-heading">
+          <h2 id="pageTitle">Dashboard</h2>
+          <p class="page-subtitle">Track equity, active positions, market movement, and current institution scenarios from one place.</p>
+        </div>
+        <div class="user-info">
+          <div class="user-pill"><span>Available cash</span><strong id="cash">Loading...</strong></div>
+          <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+        </div>
       </div>
 
       <div id="dashboardError" class="alert alert-error" style="display:none;"></div>
 
-      <div class="content grid-dashboard">
-        <!-- Portfolio Overview -->
-        <div class="card full-width">
-           <h3>Your Positions</h3>
-           <table id="positions" class="table">
-             <thead>
-               <tr>
-                 <th>Ticker</th>
-                 <th>Quantity</th>
-                 <th>Avg Price</th>
-               </tr>
-             </thead>
-             <tbody>
-               <!-- Loaded via JS -->
-             </tbody>
-           </table>
-        </div>
+      <div class="content-stack">
+        <section id="dashboardMetrics" class="metric-grid" aria-label="Portfolio summary"></section>
 
-        <!-- Short Positions -->
-        <div class="card full-width">
-           <h3>Active Shorts</h3>
-           <table id="shorts" class="table">
-             <thead>
-               <tr>
-                 <th>Ticker</th>
-                 <th>Quantity</th>
-                 <th>Open Price</th>
-                 <th>Expires At</th>
-               </tr>
-             </thead>
-             <tbody></tbody>
-           </table>
-        </div>
+        <div class="grid-dashboard">
+          <section class="card full-width">
+            <div class="section-header">
+              <div>
+                <h3>Your Positions</h3>
+                <p>Open long positions with current value, mark-to-market gain, and quick trade actions.</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="positions" class="table">
+                <thead>
+                  <tr>
+                    <th>Instrument</th>
+                    <th class="numeric">Quantity</th>
+                    <th class="numeric">Average Price</th>
+                    <th class="numeric">Market Price</th>
+                    <th class="numeric">Position Value</th>
+                    <th class="numeric">Unrealized P/L</th>
+                    <th class="action-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
 
-        <!-- Market Overview (Simple List) -->
-        <div class="card full-width">
-           <h3>Market Overview</h3>
-           <div id="stocks" class="stock-grid">
-               <!-- Cards loaded via JS -->
-           </div>
-        </div>
+          <section class="card full-width">
+            <div class="section-header">
+              <div>
+                <h3>Active Shorts</h3>
+                <p>Monitor open short positions, current mark-to-market P/L, and upcoming expiries.</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="shorts" class="table">
+                <thead>
+                  <tr>
+                    <th>Instrument</th>
+                    <th class="numeric">Quantity</th>
+                    <th class="numeric">Open Price</th>
+                    <th class="numeric">Current Price</th>
+                    <th class="numeric">P/L</th>
+                    <th>Expires</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
 
-        <!-- Crisis Scenarios -->
-        <div class="card full-width">
-            <h3>Active Scenarios</h3>
-            <ul id="scenarios"></ul>
+          <section class="card full-width">
+            <div class="section-header">
+              <div>
+                <h3>Market Overview</h3>
+                <p>Spot the latest move, then jump straight into the trade ticket.</p>
+              </div>
+            </div>
+            <div id="stocks" class="stock-grid"></div>
+          </section>
+
+          <section class="card full-width">
+            <div class="section-header">
+              <div>
+                <h3>Active Scenarios</h3>
+                <p>Live market events and crisis simulations currently affecting your institution.</p>
+              </div>
+            </div>
+            <div id="scenarios" class="stock-grid"></div>
+          </section>
         </div>
       </div>
     </main>
   </div>
   <script type="module" src="/dashboard.js"></script>
   <script type="module" src="/js/notifications.js"></script>
-  <script>
-      document.getElementById('logoutBtn').onclick = () => {
-          // Implement logout or just redirect to index for now (assuming session cookie clears or overwrites on login)
-          window.location = '/';
-      };
-
-      // Check manager role to show link
-      fetch('/api/auth_me.php')
-        .then(res => res.json())
-        .then(data => {
-            if (data.user && (data.user.role === 'manager' || data.user.role === 'admin')) {
-                document.getElementById('managerLink').style.display = 'block';
-            }
-        });
-  </script>
 </body>
 </html>

@@ -5,22 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Money Blocks - Scenarios</title>
   <link rel="stylesheet" href="/styles.css" />
-  <style>
-      .scenario-card {
-          border-left: 4px solid var(--primary-color);
-      }
-      .scenario-card.unread {
-          border-left-color: var(--danger-color);
-          background-color: rgba(239, 68, 68, 0.05);
-      }
-      .scenario-meta {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.875rem;
-          color: var(--text-muted);
-          margin-bottom: 0.5rem;
-      }
-  </style>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
   <div class="app-shell">
@@ -28,49 +13,48 @@
       <div class="brand">MoneyBlocks</div>
       <nav class="nav">
         <a href="/dashboard" class="nav-link">Dashboard</a>
-        <a href="/chart" class="nav-link">Markets & Charts</a>
+        <a href="/chart" class="nav-link">Markets &amp; Charts</a>
         <a href="/trade" class="nav-link">Trade</a>
         <a href="/scenarios" class="nav-link active">Scenarios <span id="scenarios-badge" class="badge badge-danger" style="display:none; margin-left: auto;"></span></a>
         <a href="/activity" class="nav-link">Activity</a>
         <a href="/manager" class="nav-link" id="managerLink" style="display:none;">Admin</a>
       </nav>
       <div class="sidebar-footer">
-          <!-- Status pill handled by CSS/JS -->
-          <div id="ws-status" class="status-offline">○ Offline</div>
+        <div id="ws-status" class="status-indicator disconnected"></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="top-bar">
-         <h2>Crisis Scenarios</h2>
-         <div class="user-info">
-             <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
-         </div>
+        <div class="page-heading">
+          <h2>Crisis Scenarios</h2>
+          <p class="page-subtitle">Read live market stories, simulation events, and manager-published scenarios that can affect trading decisions.</p>
+        </div>
+        <div class="user-info">
+          <button id="logoutBtn" class="btn btn-sm btn-outline">Logout</button>
+        </div>
       </div>
 
       <div id="scenariosError" class="alert alert-error" style="display:none;"></div>
 
-      <div class="content">
-          <p class="muted">Live market scenarios and news events.</p>
-          <div id="scenariosList" class="grid-dashboard" style="grid-template-columns: 1fr;">
-              <!-- JS Populated -->
-              <p>Loading...</p>
+      <div class="content-stack">
+        <section id="scenarioMetrics" class="metric-grid" aria-label="Scenario summary"></section>
+
+        <section class="card full-width">
+          <div class="section-header">
+            <div>
+              <h3>Live Scenario Feed</h3>
+              <p>Unread items stay highlighted until you mark them as reviewed.</p>
+            </div>
           </div>
+          <div id="scenariosList" class="stock-grid">
+            <p>Loading...</p>
+          </div>
+        </section>
       </div>
     </main>
   </div>
   <script type="module" src="/scenarios.js"></script>
   <script type="module" src="/js/notifications.js"></script>
-  <script>
-       fetch('/api/auth_me.php')
-        .then(res => res.json())
-        .then(data => {
-            if (!data.user) window.location = '/';
-             if (data.user.role === 'manager' || data.user.role === 'admin') {
-                document.getElementById('managerLink').style.display = 'block';
-            }
-        });
-      document.getElementById('logoutBtn').onclick = () => window.location = '/';
-  </script>
 </body>
 </html>

@@ -11,12 +11,19 @@ export class WebSocketManager {
     this.listeners = [];
     this.statusListeners = [];
     this.isConnected = false;
+    this.shouldReconnect = true;
 
     WebSocketManager.instance = this;
     this.connect();
   }
 
   static getInstance(institutionId, wsUrl) {
+    if (
+      WebSocketManager.instance &&
+      (String(WebSocketManager.instance.institutionId) !== String(institutionId) || WebSocketManager.instance.wsUrl !== wsUrl)
+    ) {
+      WebSocketManager.instance.close();
+    }
     if (!WebSocketManager.instance) {
       WebSocketManager.instance = new WebSocketManager(institutionId, wsUrl);
     }
@@ -24,6 +31,9 @@ export class WebSocketManager {
   }
 
   connect() {
+    if (!this.shouldReconnect) {
+      return;
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -56,7 +66,9 @@ export class WebSocketManager {
       console.log('WS Disconnected');
       this.isConnected = false;
       this.updateStatus('disconnected');
-      this.scheduleReconnect();
+      if (this.shouldReconnect) {
+        this.scheduleReconnect();
+      }
     };
 
     this.ws.onerror = (error) => {
@@ -95,10 +107,14 @@ export class WebSocketManager {
   }
 
   close() {
+    this.shouldReconnect = false;
     if (this.ws) {
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
+    this.isConnected = false;
+    this.updateStatus('disconnected');
     WebSocketManager.instance = null;
   }
 }

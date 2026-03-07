@@ -1,646 +1,709 @@
 import { WebSocketManager } from './js/ws-manager.js';
 import { fetchJson, getErrorMessage } from './js/api.js';
+import { escapeHtml, formatCurrency, formatDateTime, requireUser, updateWsStatus } from './js/ui.js';
+
+const state = {
+  participants: [],
+  stocks: [],
+  scenarios: [],
+};
+
+let controlsBound = false;
+
+function setManagerError(message) {
+  const el = document.getElementById('managerError');
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  el.style.display = message ? 'block' : 'none';
+}
+
+function clearManagerError() {
+  setManagerError('');
+}
+
+function setFormError(id, message) {
+  const el = document.getElementById(id);
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  el.style.display = message ? 'block' : 'none';
+}
+
+function setFormBusy(form, isBusy) {
+  form.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+  form.querySelectorAll('input, select, textarea, button').forEach((element) => {
+    element.disabled = isBusy;
+  });
+}
+
+function isAuthError(error) {
+  return error?.status === 401 || error?.status === 403 || error?.code === 'unauthorized' || error?.code === 'forbidden';
+}
+
+function handleAuthError(error) {
+  if (isAuthError(error)) {
+    window.location = '/';
+    return true;
+  }
+  return false;
+}
+
+function openModal(id, title) {
+  const modal = document.getElementById(id);
+  if (!modal) {
+    return;
+  }
+  if (title) {
+    const heading = modal.querySelector('h3');
+    if (heading) {
+      heading.textContent = title;
+    }
+  }
+  modal.style.display = 'block';
+}
+
+function closeModal(modal) {
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function bindControls() {
+  if (controlsBound) {
+    return;
+  }
+  controlsBound = true;
+
+  document.addEventListener('click', (event) => {
+    const closeButton = event.target.closest('[data-action="close-modal"]');
+    if (closeButton) {
+      closeModal(closeButton.closest('.modal'));
+      return;
+    }
+
+    const participantAction = event.target.closest('#participantsList button[data-action]');
+    if (participantAction) {
+      const id = Number(participantAction.dataset.id);
+      const name = participantAction.dataset.name || 'this user';
+      if (!id) {
+        return;
+      }
+      if (participantAction.dataset.action === 'promote-user') {
+        promoteUser(id);
+      }
+      if (participantAction.dataset.action === 'reset-password') {
+        resetPassword(id, name);
+      }
+      if (participantAction.dataset.action === 'delete-user') {
+        deleteParticipant(id, name);
+      }
+      return;
+    }
+
+    const stockAction = event.target.closest('#stocksList button[data-action="edit-stock"]');
+    if (stockAction) {
+      const id = Number(stockAction.dataset.id);
+      if (id) {
+        openStockModal(id);
+      }
+      return;
+    }
+
+    const scenarioAction = event.target.closest('#scenariosList button[data-action="edit-scenario"]');
+    if (scenarioAction) {
+      const id = Number(scenarioAction.dataset.id);
+      if (id) {
+        openScenarioModal(id);
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    document.querySelectorAll('.modal').forEach((modal) => {
+      if (modal.style.display === 'block') {
+        closeModal(modal);
+      }
+    });
+  });
+
+  document.getElementById('addParticipantBtn')?.addEventListener('click', openParticipantModal);
+  document.getElementById('addStockBtn')?.addEventListener('click', () => openStockModal());
+  document.getElementById('addScenarioBtn')?.addEventListener('click', () => openScenarioModal());
+  document.getElementById('participantSearch')?.addEventListener('input', renderParticipants);
+  document.getElementById('stockSearch')?.addEventListener('input', renderStocks);
+  document.getElementById('saveConfigBtn')?.addEventListener('click', saveConfig);
+
+  document.getElementById('addParticipantForm')?.addEventListener('submit', submitParticipantForm);
+  document.getElementById('addStockForm')?.addEventListener('submit', submitStockForm);
+  document.getElementById('scenarioForm')?.addEventListener('submit', submitScenarioForm);
+}
 
 async function initManager() {
   try {
     clearManagerError();
-    bindModalControls();
-    const config = await fetchJson('/api/config.php');
-    const me = await fetchJson('/api/auth_me.php');
-    if (!me.user || (me.user.role !== 'manager' && me.user.role !== 'admin')) {
-      window.location = '/';
+    bindControls();
+    updateWsStatus('ws-status', 'disconnected');
+
+    const [config, user] = await Promise.all([
+      fetchJson('/api/config.php'),
+      requireUser({ managerOnly: true }),
+    ]);
+    if (!user) {
       return;
     }
 
-    // WS
     if (config.wsPublicUrl) {
-         WebSocketManager.getInstance(me.user.institution_id, config.wsPublicUrl).onStatusChange(status => {
-             const el = document.getElementById('ws-status');
-             if(el) {
-                 el.textContent = status === 'connected' ? '● Live' : '○ Offline';
-                 el.className = status === 'connected' ? 'status-live' : 'status-offline';
-             }
-         });
+      WebSocketManager.getInstance(user.institution_id, config.wsPublicUrl).onStatusChange((status) => {
+        updateWsStatus('ws-status', status);
+      });
     }
 
-    loadParticipants();
-    loadStocks();
-    loadConfig();
-    loadScenarios();
-    bindManagerActions();
-
-  } catch (err) {
-    console.error('Failed to initialize manager view:', err);
-    if (redirectIfUnauthorized(err)) return;
-    setManagerError(getErrorMessage(err, 'Failed to load admin data.'));
+    await Promise.all([
+      loadParticipants(),
+      loadStocks(),
+      loadConfig(),
+      loadScenarios(),
+    ]);
+  } catch (error) {
+    console.error('Failed to initialize manager view:', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    setManagerError(getErrorMessage(error, 'Failed to load admin data.'));
   }
 }
 
-function setManagerError(message) {
-    const el = document.getElementById('managerError');
-    if (!el) return;
-    el.textContent = message;
-    el.style.display = 'block';
-}
-
-function clearManagerError() {
-    const el = document.getElementById('managerError');
-    if (!el) return;
-    el.textContent = '';
-    el.style.display = 'none';
-}
-
-function redirectIfUnauthorized(err) {
-    if (err?.status === 401 || err?.code === 'unauthorized') {
-        window.location = '/';
-        return true;
-    }
-    return false;
-}
-
-function bindModalControls() {
-    document.addEventListener('click', (event) => {
-        const closeBtn = event.target.closest('[data-action="close-modal"]');
-        if (!closeBtn) return;
-        const modal = closeBtn.closest('.modal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    });
-}
-
-function setFormError(id, message) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (!message) {
-        el.textContent = '';
-        el.style.display = 'none';
-        return;
-    }
-    el.textContent = message;
-    el.style.display = 'block';
-}
-
-function setFormBusy(form, isBusy) {
-    if (!form) return;
-    form.setAttribute('aria-busy', isBusy ? 'true' : 'false');
-    const elements = form.querySelectorAll('input, textarea, select, button');
-    elements.forEach((el) => {
-        el.disabled = isBusy;
-    });
-}
-
-async function openAdminEditModal({
-    id,
-    modalId,
-    formId,
-    errorId,
-    title,
-    loadUrl,
-    beforeOpen,
-    populateForm,
-}) {
-    setFormError(errorId, '');
-    const form = document.getElementById(formId);
-    if (!form) return;
-    form.reset();
-    if (typeof beforeOpen === 'function') {
-        beforeOpen(form, id);
-    }
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.querySelector('h3').textContent = title;
-        modal.style.display = 'block';
-    }
-
-    if (!id || !loadUrl) return;
-
-    try {
-        setFormBusy(form, true);
-        const data = await fetchJson(loadUrl);
-        if (typeof populateForm === 'function') {
-            populateForm(form, data);
-        }
-    } catch (e) {
-        console.error('Failed to load admin edit data', e);
-        if (redirectIfUnauthorized(e)) return;
-        setFormError(errorId, getErrorMessage(e, 'Failed to load data.'));
-    } finally {
-        setFormBusy(form, false);
-    }
-}
-
-function bindManagerActions() {
-    const participantAddBtn = document.getElementById('addParticipantBtn');
-    if (participantAddBtn) {
-        participantAddBtn.addEventListener('click', () => openParticipantModal());
-    }
-    const stockAddBtn = document.getElementById('addStockBtn');
-    if (stockAddBtn) {
-        stockAddBtn.addEventListener('click', () => openStockModal());
-    }
-    const scenarioAddBtn = document.getElementById('addScenarioBtn');
-    if (scenarioAddBtn) {
-        scenarioAddBtn.addEventListener('click', () => openScenarioModal());
-    }
-
-    const participantsList = document.getElementById('participantsList');
-    if (participantsList) {
-        participantsList.addEventListener('click', (event) => {
-            const button = event.target.closest('button[data-action]');
-            if (!button) return;
-            event.preventDefault();
-            const id = Number(button.dataset.id);
-            if (!id) return;
-            if (button.dataset.action === 'promote-user') {
-                promoteUser(id);
-            }
-            if (button.dataset.action === 'reset-password') {
-                const name = button.dataset.name || 'this user';
-                resetPassword(id, name);
-            }
-        });
-    }
-
-    const stocksList = document.getElementById('stocksList');
-    if (stocksList) {
-        stocksList.addEventListener('click', (event) => {
-            const button = event.target.closest('button[data-action="edit-stock"]');
-            if (!button) return;
-            event.preventDefault();
-            const id = Number(button.dataset.id);
-            if (!id) return;
-            openStockModal(id);
-        });
-    }
-
-    const scenariosList = document.getElementById('scenariosList');
-    if (scenariosList) {
-        scenariosList.addEventListener('click', (event) => {
-            const button = event.target.closest('button[data-action="edit-scenario"]');
-            if (!button) return;
-            event.preventDefault();
-            const id = Number(button.dataset.id);
-            if (!id) return;
-            openScenarioModal(id);
-        });
-    }
-}
-
-// Participants
-let allParticipants = [];
-
 async function loadParticipants() {
-    try {
-        const data = await fetchJson('/api/manager_participants.php');
-        allParticipants = data.participants || [];
-        clearManagerError();
-        renderParticipants();
-    } catch (e) {
-        console.error('Failed to load participants', e);
-        if (redirectIfUnauthorized(e)) return;
-        setManagerError(getErrorMessage(e, 'Failed to load participants.'));
+  try {
+    const data = await fetchJson('/api/manager_participants.php');
+    state.participants = data.participants || [];
+    clearManagerError();
+    renderParticipants();
+  } catch (error) {
+    console.error('Failed to load participants', error);
+    if (handleAuthError(error)) {
+      return;
     }
+    setManagerError(getErrorMessage(error, 'Failed to load participants.'));
+  }
 }
 
 function renderParticipants() {
-    const list = document.getElementById('participantsList');
-    list.innerHTML = '';
-    const query = (document.getElementById('participantSearch').value || '').toLowerCase();
+  const list = document.getElementById('participantsList');
+  if (!list) {
+    return;
+  }
 
-    const filtered = allParticipants.filter(p => {
-        const text = (p.username || '') + ' ' + (p.email || '') + ' ' + (p.role || '');
-        return text.toLowerCase().includes(query);
-    });
-    if (filtered.length === 0) {
-        list.innerHTML = '<p class="muted">No participants found.</p>';
-        return;
+  const query = (document.getElementById('participantSearch')?.value || '').trim().toLowerCase();
+  const participants = !query
+    ? state.participants
+    : state.participants.filter((participant) => `${participant.username || ''} ${participant.email || ''} ${participant.role || ''}`.toLowerCase().includes(query));
+
+  list.innerHTML = '';
+
+  if (!participants.length) {
+    list.innerHTML = '<p class="muted">No participants found.</p>';
+    return;
+  }
+
+  participants.forEach((participant) => {
+    const isManager = participant.role === 'manager' || participant.role === 'admin';
+    const displayName = participant.username || participant.email || 'Participant';
+
+    const row = document.createElement('div');
+    row.className = 'participant-item';
+
+    const info = document.createElement('div');
+    info.className = 'stack';
+    const title = document.createElement('div');
+    title.className = 'stack';
+    const name = document.createElement('strong');
+    name.textContent = displayName;
+    title.appendChild(name);
+    if (isManager) {
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-info';
+      badge.textContent = participant.role === 'admin' ? 'Admin' : 'Manager';
+      title.appendChild(badge);
     }
-    filtered.forEach(p => {
-        const isManager = p.role === 'manager' || p.role === 'admin';
-        const displayName = p.username || p.email || 'Participant';
-        const div = document.createElement('div');
-        div.className = 'participant-item';
+    info.appendChild(title);
+    const meta = document.createElement('span');
+    meta.className = 'subtext';
+    meta.textContent = `${participant.email || 'No email'} - ${formatCurrency(participant.cash_balance || 0)} cash`;
+    info.appendChild(meta);
 
-        const info = document.createElement('div');
-        const nameEl = document.createElement('strong');
-        nameEl.textContent = displayName;
-        info.appendChild(nameEl);
-        if (isManager) {
-            const badge = document.createElement('span');
-            badge.className = 'badge badge-info';
-            badge.textContent = 'Manager';
-            info.appendChild(document.createTextNode(' '));
-            info.appendChild(badge);
-        }
-        info.appendChild(document.createElement('br'));
-        const cash = document.createElement('small');
-        cash.textContent = `Cash: ${p.cash_balance || 0}`;
-        info.appendChild(cash);
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '0.5rem';
+    actions.style.flexWrap = 'wrap';
 
-        const actions = document.createElement('div');
-        actions.style.display = 'flex';
-        actions.style.gap = '0.5rem';
+    if (!isManager) {
+      const promoteButton = document.createElement('button');
+      promoteButton.type = 'button';
+      promoteButton.className = 'btn btn-sm btn-outline';
+      promoteButton.dataset.action = 'promote-user';
+      promoteButton.dataset.id = participant.id;
+      promoteButton.dataset.name = displayName;
+      promoteButton.textContent = 'Promote';
+      actions.appendChild(promoteButton);
+    }
 
-        if (!isManager) {
-            const promoteBtn = document.createElement('button');
-            promoteBtn.className = 'btn btn-sm btn-outline';
-            promoteBtn.type = 'button';
-            promoteBtn.dataset.action = 'promote-user';
-            promoteBtn.dataset.id = p.id;
-            promoteBtn.textContent = 'Promote';
-            actions.appendChild(promoteBtn);
-        }
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.className = 'btn btn-sm btn-outline';
+    resetButton.dataset.action = 'reset-password';
+    resetButton.dataset.id = participant.id;
+    resetButton.dataset.name = displayName;
+    resetButton.textContent = 'Reset Password';
+    actions.appendChild(resetButton);
 
-        const resetBtn = document.createElement('button');
-        resetBtn.className = 'btn btn-sm btn-outline';
-        resetBtn.type = 'button';
-        resetBtn.dataset.action = 'reset-password';
-        resetBtn.dataset.id = p.id;
-        resetBtn.dataset.name = displayName;
-        resetBtn.textContent = 'Pwd';
-        actions.appendChild(resetBtn);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'btn btn-sm btn-outline';
+    deleteButton.dataset.action = 'delete-user';
+    deleteButton.dataset.id = participant.id;
+    deleteButton.dataset.name = displayName;
+    deleteButton.textContent = 'Delete';
+    actions.appendChild(deleteButton);
 
-        div.appendChild(info);
-        div.appendChild(actions);
-        list.appendChild(div);
-    });
+    row.append(info, actions);
+    list.appendChild(row);
+  });
 }
 
-document.getElementById('participantSearch').addEventListener('input', () => {
-    renderParticipants();
-});
-
 async function resetPassword(id, name) {
-    const newPwd = prompt(`Enter new password for ${name}:`);
-    if (!newPwd) return;
-    try {
-        const data = await fetchJson('/api/manager_password_reset.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ user_id: id, password: newPwd })
-        });
-        alert(data.message);
-    } catch(e) {
-        console.error(e);
-        if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to reset password.'));
+  const password = prompt(`Enter a new password for ${name}:`);
+  if (!password) {
+    return;
+  }
+
+  try {
+    const data = await fetchJson('/api/manager_password_reset.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: id, password }),
+    });
+    alert(data.message || 'Password updated successfully.');
+  } catch (error) {
+    console.error('Password reset failed', error);
+    if (handleAuthError(error)) {
+      return;
     }
+    alert(getErrorMessage(error, 'Failed to reset password.'));
+  }
 }
 
 async function promoteUser(id) {
-    if(!confirm('Promote user to Manager?')) return;
-    try {
-        await fetchJson('/api/manager_participants.php', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id: id, role: 'manager'})
-        });
-        alert('User promoted');
-        loadParticipants();
-    } catch(e) {
-        console.error(e);
-        if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to promote user.'));
+  if (!confirm('Promote this user to manager access?')) {
+    return;
+  }
+
+  try {
+    await fetchJson('/api/manager_participants.php', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, role: 'manager' }),
+    });
+    alert('User promoted to manager.');
+    await loadParticipants();
+  } catch (error) {
+    console.error('Failed to promote user', error);
+    if (handleAuthError(error)) {
+      return;
     }
+    alert(getErrorMessage(error, 'Failed to promote user.'));
+  }
+}
+
+async function deleteParticipant(id, name) {
+  if (!confirm(`Delete ${name}? This also removes their sessions and portfolio history.`)) {
+    return;
+  }
+
+  try {
+    await fetchJson(`/api/manager_participants.php?id=${id}`, { method: 'DELETE' });
+    alert('Participant deleted.');
+    await loadParticipants();
+  } catch (error) {
+    console.error('Failed to delete participant', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    alert(getErrorMessage(error, 'Failed to delete participant.'));
+  }
 }
 
 function openParticipantModal() {
-    setFormError('participantFormError', '');
-    const form = document.getElementById('addParticipantForm');
-    if (form) {
-        form.reset();
-    }
-    const modal = document.getElementById('addParticipantModal');
-    if (modal) {
-        modal.style.display = 'block';
-    }
+  const form = document.getElementById('addParticipantForm');
+  if (form) {
+    form.reset();
+  }
+  setFormError('participantFormError', '');
+  openModal('addParticipantModal', 'Add Participant');
 }
 
-document.getElementById('addParticipantForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const payload = Object.fromEntries(formData.entries());
+async function submitParticipantForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
 
-    try {
-        setFormError('participantFormError', '');
-        setFormBusy(e.target, true);
-        const data = await fetchJson('/api/manager_participants.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        alert(`User created! Temp Password: ${data.temp_password}`);
-        document.getElementById('addParticipantModal').style.display='none';
-        loadParticipants();
-    } catch (e) {
-        console.error('Failed to create participant', e);
-        if (redirectIfUnauthorized(e)) return;
-        const message = getErrorMessage(e, 'Failed to create participant.');
-        setFormError('participantFormError', message);
-    } finally {
-        setFormBusy(e.target, false);
+  try {
+    setFormError('participantFormError', '');
+    setFormBusy(form, true);
+    const data = await fetchJson('/api/manager_participants.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    closeModal(document.getElementById('addParticipantModal'));
+    alert(`Participant created. Temporary password: ${data.temp_password}`);
+    await loadParticipants();
+  } catch (error) {
+    console.error('Failed to create participant', error);
+    if (handleAuthError(error)) {
+      return;
     }
-});
-
-
-// Stocks
-let allStocks = [];
+    setFormError('participantFormError', getErrorMessage(error, 'Failed to create participant.'));
+  } finally {
+    setFormBusy(form, false);
+  }
+}
 
 async function loadStocks() {
-    try {
-        const data = await fetchJson('/api/manager_stocks.php');
-        allStocks = data.stocks || [];
-        clearManagerError();
-        renderStocks();
-    } catch (e) {
-        console.error('Failed to load stocks', e);
-        if (redirectIfUnauthorized(e)) return;
-        setManagerError(getErrorMessage(e, 'Failed to load stocks.'));
+  try {
+    const data = await fetchJson('/api/manager_stocks.php');
+    state.stocks = data.stocks || [];
+    clearManagerError();
+    renderStocks();
+  } catch (error) {
+    console.error('Failed to load stocks', error);
+    if (handleAuthError(error)) {
+      return;
     }
+    setManagerError(getErrorMessage(error, 'Failed to load stocks.'));
+  }
 }
 
 function renderStocks() {
-    const list = document.getElementById('stocksList');
-    list.innerHTML = '';
-    const query = (document.getElementById('stockSearch').value || '').toLowerCase();
+  const list = document.getElementById('stocksList');
+  if (!list) {
+    return;
+  }
 
-    const filtered = allStocks.filter(s => {
-        const text = (s.ticker || '') + ' ' + (s.name || '');
-        return text.toLowerCase().includes(query);
-    });
-    if (filtered.length === 0) {
-        list.innerHTML = '<p class="muted">No stocks found.</p>';
-        return;
-    }
-    filtered.forEach(s => {
-        const div = document.createElement('div');
-        div.className = 'participant-item';
-        div.innerHTML = `
-            <div>
-                <strong>${s.ticker}</strong> - ${s.name}<br>
-                <small>${s.current_price || s.initial_price}</small>
-            </div>
-             <div>
-                 <button class="btn btn-sm btn-outline" type="button" data-action="edit-stock" data-id="${s.id}">Edit</button>
-            </div>
-        `;
-        list.appendChild(div);
-    });
+  const query = (document.getElementById('stockSearch')?.value || '').trim().toLowerCase();
+  const stocks = !query
+    ? state.stocks
+    : state.stocks.filter((stock) => `${stock.ticker || ''} ${stock.name || ''}`.toLowerCase().includes(query));
+
+  list.innerHTML = '';
+
+  if (!stocks.length) {
+    list.innerHTML = '<p class="muted">No stocks found.</p>';
+    return;
+  }
+
+  stocks.forEach((stock) => {
+    const row = document.createElement('div');
+    row.className = 'participant-item';
+    row.innerHTML = `
+      <div class="stack">
+        <strong>${escapeHtml(stock.ticker)}</strong>
+        <span class="subtext">${escapeHtml(stock.name)}</span>
+        <span class="subtext">${formatCurrency(stock.current_price ?? stock.initial_price)}</span>
+      </div>
+      <div>
+        <button class="btn btn-sm btn-outline" type="button" data-action="edit-stock" data-id="${stock.id}">Edit</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
 }
 
-document.getElementById('stockSearch').addEventListener('input', () => {
-    renderStocks();
-});
+function prepareStockForm(form, stockId) {
+  form.reset();
+  let idInput = form.querySelector('input[name="id"]');
+  if (!idInput) {
+    idInput = document.createElement('input');
+    idInput.type = 'hidden';
+    idInput.name = 'id';
+    form.appendChild(idInput);
+  }
+  idInput.value = stockId ? String(stockId) : '';
 
-async function openStockModal(id) {
-    await openAdminEditModal({
-        id,
-        modalId: 'addStockModal',
-        formId: 'addStockForm',
-        errorId: 'stockFormError',
-        title: id ? 'Edit Stock' : 'Add Stock',
-        loadUrl: id ? `/api/manager_stocks.php?id=${id}` : null,
-        beforeOpen: (form, stockId) => {
-            let idInput = form.querySelector('input[name="id"]');
-            if (!idInput) {
-                idInput = document.createElement('input');
-                idInput.type = 'hidden';
-                idInput.name = 'id';
-                form.appendChild(idInput);
-            }
-            idInput.value = stockId ? String(stockId) : '';
-            const initialPriceGroup = form.querySelector('[data-field="initial-price"]');
-            const currentPriceGroup = form.querySelector('[data-field="current-price"]');
-            const initialPriceInput = form.querySelector('input[name="initial_price"]');
-            const priceInput = form.querySelector('input[name="price"]');
-            const isEdit = !!stockId;
-            if (initialPriceGroup) {
-                initialPriceGroup.style.display = isEdit ? 'none' : '';
-            }
-            if (currentPriceGroup) {
-                currentPriceGroup.style.display = isEdit ? '' : 'none';
-            }
-            if (initialPriceInput) {
-                initialPriceInput.disabled = isEdit;
-                initialPriceInput.required = !isEdit;
-            }
-            if (priceInput && !isEdit) {
-                priceInput.value = '';
-            }
-            if (!isEdit) {
-                delete form.dataset.currentPrice;
-            }
-        },
-        populateForm: (form, data) => {
-            if (!data.stock) {
-                throw new Error('Stock data missing from response.');
-            }
-            form.ticker.value = data.stock.ticker || '';
-            form.name.value = data.stock.name || '';
-            form.initial_price.value = data.stock.initial_price ?? '';
-            if (form.price) {
-                const currentPrice = data.stock.current_price ?? data.stock.initial_price ?? '';
-                form.price.value = currentPrice;
-                form.dataset.currentPrice = currentPrice;
-            }
-            form.total_limit.value = data.stock.total_limit ?? '';
-            const perUserLimitInput = form.querySelector('[name="per_user_limit"]');
-            if (perUserLimitInput) {
-                perUserLimitInput.value = data.stock.per_user_limit ?? '';
-            }
-            const perUserShortLimitInput = form.querySelector('[name="per_user_short_limit"]');
-            if (perUserShortLimitInput) {
-                perUserShortLimitInput.value = data.stock.per_user_short_limit ?? '';
-            }
-        },
-    });
+  const initialPriceGroup = form.querySelector('[data-field="initial-price"]');
+  const currentPriceGroup = form.querySelector('[data-field="current-price"]');
+  const initialPriceInput = form.querySelector('input[name="initial_price"]');
+  const priceInput = form.querySelector('input[name="price"]');
+  const isEdit = Boolean(stockId);
+
+  if (initialPriceGroup) {
+    initialPriceGroup.style.display = isEdit ? 'none' : '';
+  }
+  if (currentPriceGroup) {
+    currentPriceGroup.style.display = isEdit ? '' : 'none';
+  }
+  if (initialPriceInput) {
+    initialPriceInput.disabled = isEdit;
+    initialPriceInput.required = !isEdit;
+  }
+  if (priceInput && !isEdit) {
+    priceInput.value = '';
+  }
+  if (!isEdit) {
+    delete form.dataset.currentPrice;
+  }
 }
 
-document.getElementById('addStockForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const payload = Object.fromEntries(formData.entries());
+async function openStockModal(id = null) {
+  const form = document.getElementById('addStockForm');
+  if (!form) {
+    return;
+  }
 
-    const isEdit = !!payload.id;
-    const method = isEdit ? 'PUT' : 'POST';
-    const url = isEdit ? `/api/manager_stocks.php?id=${payload.id}` : '/api/manager_stocks.php';
-    ['total_limit', 'per_user_limit', 'per_user_short_limit'].forEach((key) => {
-        if (payload[key] === '') {
-            payload[key] = null;
-        }
+  setFormError('stockFormError', '');
+  prepareStockForm(form, id);
+  openModal('addStockModal', id ? 'Edit Stock' : 'Add Stock');
+
+  if (!id) {
+    return;
+  }
+
+  try {
+    setFormBusy(form, true);
+    const data = await fetchJson(`/api/manager_stocks.php?id=${id}`);
+    if (!data.stock) {
+      throw new Error('Stock data missing from response.');
+    }
+    form.ticker.value = data.stock.ticker || '';
+    form.name.value = data.stock.name || '';
+    form.initial_price.value = data.stock.initial_price ?? '';
+    if (form.price) {
+      const currentPrice = data.stock.current_price ?? data.stock.initial_price ?? '';
+      form.price.value = currentPrice;
+      form.dataset.currentPrice = String(currentPrice);
+    }
+    form.total_limit.value = data.stock.total_limit ?? '';
+    form.per_user_limit.value = data.stock.per_user_limit ?? '';
+    form.per_user_short_limit.value = data.stock.per_user_short_limit ?? '';
+  } catch (error) {
+    console.error('Failed to load stock data', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    setFormError('stockFormError', getErrorMessage(error, 'Failed to load stock.'));
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function submitStockForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  const isEdit = Boolean(payload.id);
+  const url = isEdit ? `/api/manager_stocks.php?id=${payload.id}` : '/api/manager_stocks.php';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  ['total_limit', 'per_user_limit', 'per_user_short_limit'].forEach((field) => {
+    if (payload[field] === '') {
+      payload[field] = null;
+    }
+  });
+
+  if (isEdit) {
+    delete payload.initial_price;
+    const originalPrice = Number(form.dataset.currentPrice);
+    const nextPrice = payload.price === '' ? NaN : Number(payload.price);
+    if (!Number.isFinite(nextPrice) || (Number.isFinite(originalPrice) && originalPrice === nextPrice)) {
+      delete payload.price;
+    }
+  }
+
+  try {
+    setFormError('stockFormError', '');
+    setFormBusy(form, true);
+    await fetchJson(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    if (isEdit) {
-        delete payload.initial_price;
-        const originalPrice = Number(e.target.dataset.currentPrice);
-        const submittedPrice = payload.price === '' ? NaN : Number(payload.price);
-        if (!Number.isFinite(submittedPrice) || (Number.isFinite(originalPrice) && submittedPrice === originalPrice)) {
-            delete payload.price;
-        }
+    closeModal(document.getElementById('addStockModal'));
+    alert(isEdit ? 'Stock updated.' : 'Stock created.');
+    await loadStocks();
+  } catch (error) {
+    console.error('Failed to save stock', error);
+    if (handleAuthError(error)) {
+      return;
     }
+    setFormError('stockFormError', getErrorMessage(error, 'Failed to save stock.'));
+  } finally {
+    setFormBusy(form, false);
+  }
+}
 
-    try {
-        setFormError('stockFormError', '');
-        setFormBusy(e.target, true);
-        await fetchJson(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        alert(isEdit ? 'Stock updated' : 'Stock created');
-        document.getElementById('addStockModal').style.display='none';
-        loadStocks();
-    } catch (e) {
-        console.error('Failed to save stock', e);
-        if (redirectIfUnauthorized(e)) return;
-        const message = getErrorMessage(e, 'Failed to save stock.');
-        setFormError('stockFormError', message);
-    } finally {
-        setFormBusy(e.target, false);
-    }
-});
-
-// Config
 async function loadConfig() {
-    try {
-        const data = await fetchJson('/api/manager_config.php');
-        if (data.short_durations) {
-            document.getElementById('shortDurations').value = data.short_durations.map(d => d.duration_seconds).join(', ');
-        }
-    } catch (e) {
-        console.warn('Manager config load failed', e);
-    }
+  try {
+    const data = await fetchJson('/api/manager_config.php');
+    document.getElementById('shortDurations').value = (data.short_durations || []).map((item) => item.duration_seconds).join(', ');
+  } catch (error) {
+    console.warn('Manager config load failed', error);
+  }
 }
 
-document.getElementById('saveConfigBtn').addEventListener('click', async () => {
-    const val = document.getElementById('shortDurations').value;
-    const durations = val.split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+async function saveConfig() {
+  const raw = document.getElementById('shortDurations').value;
+  const durations = raw.split(',').map((value) => Number.parseInt(value.trim(), 10)).filter((value) => Number.isFinite(value) && value > 0);
 
-    try {
-        await fetchJson('/api/manager_config.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ short_durations: durations })
-        });
-        alert('Config Saved');
-    } catch (e) {
-        if (redirectIfUnauthorized(e)) return;
-        alert(getErrorMessage(e, 'Failed to save config.'));
-    }
-});
-
-// Scenarios
-let allScenarios = [];
-async function loadScenarios() {
-    try {
-        const data = await fetchJson('/api/manager_scenarios.php');
-        allScenarios = data.scenarios || [];
-        clearManagerError();
-        renderScenarios();
-    } catch(e) {
-        console.error(e);
-        if (redirectIfUnauthorized(e)) return;
-        setManagerError(getErrorMessage(e, 'Failed to load scenarios.'));
-    }
-}
-
-function renderScenarios() {
-    const list = document.getElementById('scenariosList');
-    list.innerHTML = '';
-
-    if (allScenarios.length === 0) {
-        list.innerHTML = '<p class="muted">No scenarios available.</p>';
-        return;
-    }
-
-    allScenarios.forEach(s => {
-        const div = document.createElement('div');
-        div.className = 'participant-item';
-        const startsAt = s.starts_at ? new Date(`${s.starts_at}Z`).toLocaleString() : 'Immediate';
-        div.innerHTML = `
-            <div>
-                <strong>${s.title}</strong>
-                <span class="badge badge-${getStatusBadge(s.status)}">${s.status}</span><br>
-                <small>Starts: ${startsAt}</small>
-            </div>
-             <div>
-                 <button class="btn btn-sm btn-outline" type="button" data-action="edit-scenario" data-id="${s.id}">Edit</button>
-            </div>
-        `;
-        list.appendChild(div);
+  try {
+    await fetchJson('/api/manager_config.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ short_durations: durations }),
     });
+    alert('Configuration saved.');
+  } catch (error) {
+    if (handleAuthError(error)) {
+      return;
+    }
+    alert(getErrorMessage(error, 'Failed to save configuration.'));
+  }
+}
+
+async function loadScenarios() {
+  try {
+    const data = await fetchJson('/api/manager_scenarios.php');
+    state.scenarios = data.scenarios || [];
+    clearManagerError();
+    renderScenarios();
+  } catch (error) {
+    console.error('Failed to load scenarios', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    setManagerError(getErrorMessage(error, 'Failed to load scenarios.'));
+  }
 }
 
 function getStatusBadge(status) {
-    if (status === 'published') return 'success';
-    if (status === 'draft') return 'warning';
-    return 'secondary';
+  if (status === 'published') {
+    return 'success';
+  }
+  if (status === 'draft') {
+    return 'warning';
+  }
+  return 'secondary';
 }
 
-async function openScenarioModal(id) {
-    await openAdminEditModal({
-        id,
-        modalId: 'scenarioModal',
-        formId: 'scenarioForm',
-        errorId: 'scenarioFormError',
-        title: id ? 'Edit Scenario' : 'Add Scenario',
-        loadUrl: id ? `/api/manager_scenarios.php?id=${id}` : null,
-        beforeOpen: () => {
-            document.getElementById('scenarioId').value = id ? String(id) : '';
-        },
-        populateForm: (_form, data) => {
-            const scenario = data.scenario;
-            if (!scenario) {
-                throw new Error('Scenario data missing from response.');
-            }
-            document.getElementById('scenarioTitle').value = scenario.title || '';
-            document.getElementById('scenarioDesc').value = scenario.description || '';
-            document.getElementById('scenarioStatus').value = scenario.status || 'draft';
-            if (scenario.starts_at) {
-                const startsAt = new Date(`${scenario.starts_at}Z`);
-                const localIso = new Date(startsAt.getTime() - startsAt.getTimezoneOffset() * 60000).toISOString();
-                document.getElementById('scenarioStart').value = localIso.slice(0, 16);
-            } else {
-                document.getElementById('scenarioStart').value = '';
-            }
-        },
+function renderScenarios() {
+  const list = document.getElementById('scenariosList');
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = '';
+  if (!state.scenarios.length) {
+    list.innerHTML = '<p class="muted">No scenarios available.</p>';
+    return;
+  }
+
+  state.scenarios.forEach((scenario) => {
+    const row = document.createElement('div');
+    row.className = 'participant-item';
+    row.innerHTML = `
+      <div class="stack">
+        <strong>${escapeHtml(scenario.title)}</strong>
+        <span class="badge badge-${getStatusBadge(scenario.status)}">${scenario.status}</span>
+        <span class="subtext">Starts ${scenario.starts_at ? formatDateTime(scenario.starts_at) : 'Immediately when published'}</span>
+      </div>
+      <div>
+        <button class="btn btn-sm btn-outline" type="button" data-action="edit-scenario" data-id="${scenario.id}">Edit</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+async function openScenarioModal(id = null) {
+  const form = document.getElementById('scenarioForm');
+  if (!form) {
+    return;
+  }
+
+  setFormError('scenarioFormError', '');
+  form.reset();
+  document.getElementById('scenarioId').value = id ? String(id) : '';
+  openModal('scenarioModal', id ? 'Edit Scenario' : 'Add Scenario');
+
+  if (!id) {
+    return;
+  }
+
+  try {
+    setFormBusy(form, true);
+    const data = await fetchJson(`/api/manager_scenarios.php?id=${id}`);
+    if (!data.scenario) {
+      throw new Error('Scenario data missing from response.');
+    }
+    document.getElementById('scenarioTitle').value = data.scenario.title || '';
+    document.getElementById('scenarioDesc').value = data.scenario.description || '';
+    document.getElementById('scenarioStatus').value = data.scenario.status || 'draft';
+    if (data.scenario.starts_at) {
+      const localDate = new Date(`${data.scenario.starts_at}Z`);
+      const localIso = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000).toISOString();
+      document.getElementById('scenarioStart').value = localIso.slice(0, 16);
+    }
+  } catch (error) {
+    console.error('Failed to load scenario', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    setFormError('scenarioFormError', getErrorMessage(error, 'Failed to load scenario.'));
+  } finally {
+    setFormBusy(form, false);
+  }
+}
+
+async function submitScenarioForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form).entries());
+
+  if (payload.starts_at) {
+    const localDate = new Date(payload.starts_at);
+    const utcIso = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000).toISOString();
+    payload.starts_at = utcIso.slice(0, 19).replace('T', ' ');
+  }
+
+  const isEdit = Boolean(payload.id);
+  const url = isEdit ? `/api/manager_scenarios.php?id=${payload.id}` : '/api/manager_scenarios.php';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  try {
+    setFormError('scenarioFormError', '');
+    setFormBusy(form, true);
+    await fetchJson(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
+    closeModal(document.getElementById('scenarioModal'));
+    alert('Scenario saved.');
+    await loadScenarios();
+  } catch (error) {
+    console.error('Failed to save scenario', error);
+    if (handleAuthError(error)) {
+      return;
+    }
+    setFormError('scenarioFormError', getErrorMessage(error, 'Failed to save scenario.'));
+  } finally {
+    setFormBusy(form, false);
+  }
 }
-
-document.getElementById('scenarioForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const payload = Object.fromEntries(formData.entries());
-    // Fix datetime format if needed
-    if (payload.starts_at) {
-        const localDate = new Date(payload.starts_at);
-        const utcIso = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000).toISOString();
-        payload.starts_at = utcIso.slice(0, 19).replace('T', ' ');
-    }
-
-    const isEdit = !!payload.id;
-    const method = isEdit ? 'PUT' : 'POST';
-    const url = isEdit ? `/api/manager_scenarios.php?id=${payload.id}` : '/api/manager_scenarios.php';
-
-    try {
-        setFormError('scenarioFormError', '');
-        setFormBusy(e.target, true);
-        await fetchJson(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        alert('Scenario saved');
-        document.getElementById('scenarioModal').style.display='none';
-        loadScenarios();
-    } catch (e) {
-        console.error('Failed to save scenario', e);
-        if (redirectIfUnauthorized(e)) return;
-        const message = getErrorMessage(e, 'Failed to save scenario.');
-        setFormError('scenarioFormError', message);
-    } finally {
-        setFormBusy(e.target, false);
-    }
-});
 
 initManager();
