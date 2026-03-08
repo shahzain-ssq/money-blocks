@@ -30,7 +30,7 @@ For updates to an existing database:
 ### 2. Web Server
 Serve the repository root.
 - **Apache**: `.htaccess` is provided for URL rewriting.
-- **PHP Built-in**: `php -S localhost:8000` (Router handled by `public/index.php`).
+- **PHP Built-in**: `php -S localhost:8000 -t public public/index.php`
 
 ### 3. WebSocket Server (Required for Charts & Live Updates)
 The Python WebSocket server broadcasts price updates and crisis events.

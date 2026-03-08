@@ -171,6 +171,7 @@ export function bindMobileNav() {
   function syncSidebarState() {
     if (!isMobile()) {
       // Desktop: sidebar is always visible and interactive
+      sidebar.classList.remove('is-open');
       sidebar.removeAttribute('aria-hidden');
       sidebar.removeAttribute('inert');
       toggleBtn.setAttribute('aria-expanded', 'false');
